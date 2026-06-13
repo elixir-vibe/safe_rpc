@@ -23,10 +23,19 @@ defmodule SafeRPC.Protocol do
     end
   end
 
-  def decode_reply(binary, id) when is_binary(binary) do
+  def decode_reply(binary) when is_binary(binary) do
     with {:ok, term} <- decode(binary) do
       case term do
-        {:safe_rpc_reply, @version, ^id, result} -> {:ok, result}
+        {:safe_rpc_reply, @version, id, result} -> {:ok, %{id: id, result: result}}
+        other -> {:error, {:invalid_reply, other}}
+      end
+    end
+  end
+
+  def decode_reply(binary, id) when is_binary(binary) do
+    with {:ok, reply} <- decode_reply(binary) do
+      case reply do
+        %{id: ^id, result: result} -> {:ok, result}
         other -> {:error, {:invalid_reply, other}}
       end
     end

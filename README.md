@@ -16,6 +16,7 @@ Implemented:
 - `:erlang.binary_to_term(binary, [:safe])` decoding
 - one-shot and persistent client-process `call` / `cast`
 - persistent server-side connections
+- request id tracking for multiple in-flight client requests
 - Task-like async requests with `async`, `await`, `yield`, and `shutdown`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
@@ -106,7 +107,8 @@ SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and pr
 SafeRPC should borrow scalability patterns from `priestjim/gen_rpc` without adopting its public remote-MFA trust model:
 
 - persistent client connections
-- acceptor/connection/request-worker supervision
+- acceptor/connection supervision
+- request-worker supervision for long-running handlers
 - per-key sharded client pools
 - async call/yield
 - multicall/fanout

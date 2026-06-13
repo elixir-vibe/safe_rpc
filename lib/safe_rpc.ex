@@ -7,13 +7,27 @@ defmodule SafeRPC do
   defdelegate cast(socket, op, payload \\ %{}, opts \\ []), to: Client
 
   def async(client, op, payload \\ %{}, opts \\ []) do
-    task = Task.async(fn -> call(client, op, payload, opts) end)
-    %SafeRPC.Task{task: task, op: op}
+    case Client.send_request(client, op, payload, opts) do
+      {:ok, request} -> request
+      {:error, reason} -> raise RuntimeError, "SafeRPC async request failed: #{inspect(reason)}"
+    end
   end
 
-  def await(%SafeRPC.Task{task: task}, timeout \\ 5_000), do: Task.await(task, timeout)
+  def await(%SafeRPC.Task{id: id} = request, timeout \\ 5_000) do
+    receive do
+      {SafeRPC.Task, ^id, result} -> result
+    after
+      timeout -> exit({:timeout, {__MODULE__, :await, [request, timeout]}})
+    end
+  end
 
-  def yield(%SafeRPC.Task{task: task}, timeout \\ 0), do: Task.yield(task, timeout)
+  def yield(%SafeRPC.Task{id: id}, timeout \\ 0) do
+    receive do
+      {SafeRPC.Task, ^id, result} -> {:ok, result}
+    after
+      timeout -> nil
+    end
+  end
 
-  def shutdown(%SafeRPC.Task{task: task}, timeout \\ 5_000), do: Task.shutdown(task, timeout)
+  def shutdown(%SafeRPC.Task{}, _timeout \\ 5_000), do: nil
 end

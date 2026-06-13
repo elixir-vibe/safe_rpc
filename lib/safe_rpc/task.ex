@@ -1,5 +1,5 @@
 defmodule SafeRPC.Task do
   @moduledoc "A SafeRPC asynchronous request."
 
-  defstruct [:task, :op]
+  defstruct [:client, :id, :op]
 end

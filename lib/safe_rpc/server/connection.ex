@@ -25,6 +25,8 @@ defmodule SafeRPC.Server.Connection do
     case state.transport.recv(state.socket, state.recv_timeout) do
       {:ok, payload} ->
         handle_payload(payload, state)
+        send(self(), :recv)
+        {:noreply, state}
 
       {:error, :closed} ->
         {:stop, :normal, state}
@@ -41,19 +43,21 @@ defmodule SafeRPC.Server.Connection do
   end
 
   defp handle_payload(payload, state) do
-    with {:ok, request} <- Protocol.decode_request(payload),
-         reply <- GenServer.call(state.owner, {:dispatch, request}, :infinity),
-         :ok <-
-           state.transport.send(
-             state.socket,
-             Protocol.encode_reply(request.id, reply),
-             state.recv_timeout
-           ) do
-      send(self(), :recv)
-      {:noreply, state}
-    else
-      {:error, reason} ->
-        {:stop, reason, state}
+    case Protocol.decode_request(payload) do
+      {:ok, request} ->
+        owner = state.owner
+        transport = state.transport
+        socket = state.socket
+        timeout = state.recv_timeout
+
+        {:ok, _pid} =
+          Task.start(fn ->
+            reply = GenServer.call(owner, {:dispatch, request}, :infinity)
+            transport.send(socket, Protocol.encode_reply(request.id, reply), timeout)
+          end)
+
+      {:error, _reason} ->
+        :ok
     end
   end
 end

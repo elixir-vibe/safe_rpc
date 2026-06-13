@@ -63,6 +63,21 @@ defmodule SafeRPCTest do
     GenServer.stop(server)
   end
 
+  test "tracks multiple asynchronous requests" do
+    socket = socket_path("multi-async")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    first = SafeRPC.async(client, :echo, %{n: 1})
+    second = SafeRPC.async(client, :echo, %{n: 2})
+
+    assert {:ok, %{n: 1}} = SafeRPC.await(first, 1_000)
+    assert {:ok, %{n: 2}} = SafeRPC.await(second, 1_000)
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
   test "checks capabilities" do
     socket = socket_path("cap")
     cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
