@@ -29,5 +29,7 @@ defmodule SafeRPC do
     end
   end
 
-  def shutdown(%SafeRPC.Task{}, _timeout \\ 5_000), do: nil
+  def cancel(%SafeRPC.Task{} = request), do: Client.cancel(request)
+
+  def shutdown(%SafeRPC.Task{} = request, _timeout \\ 5_000), do: cancel(request)
 end

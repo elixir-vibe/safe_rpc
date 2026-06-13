@@ -3,19 +3,24 @@ defmodule SafeRPC.Protocol do
 
   @version 1
 
-  def encode_call(id, cap, op, payload),
-    do: encode({:safe_rpc, @version, id, cap, :call, op, payload})
+  def encode_call(id, cap, op, payload, meta \\ %{}),
+    do: encode({:safe_rpc, @version, id, cap, :call, op, payload, meta})
 
-  def encode_cast(id, cap, op, payload),
-    do: encode({:safe_rpc, @version, id, cap, :cast, op, payload})
+  def encode_cast(id, cap, op, payload, meta \\ %{}),
+    do: encode({:safe_rpc, @version, id, cap, :cast, op, payload, meta})
+
+  def encode_cancel(id), do: encode({:safe_rpc_cancel, @version, id})
 
   def encode_reply(id, result), do: encode({:safe_rpc_reply, @version, id, result})
 
   def decode_request(binary) when is_binary(binary) do
     with {:ok, term} <- decode(binary) do
       case term do
-        {:safe_rpc, @version, id, cap, kind, op, payload} when kind in [:call, :cast] ->
-          {:ok, %{id: id, cap: cap, kind: kind, op: op, payload: payload}}
+        {:safe_rpc, @version, id, cap, kind, op, payload, meta} when kind in [:call, :cast] ->
+          {:ok, %{id: id, cap: cap, kind: kind, op: op, payload: payload, meta: meta}}
+
+        {:safe_rpc_cancel, @version, id} ->
+          {:ok, %{id: id, kind: :cancel}}
 
         other ->
           {:error, {:invalid_request, other}}

@@ -1,6 +1,13 @@
 defmodule SafeRPCTest do
   use ExUnit.Case, async: true
 
+  defmodule MetadataAuthorizer do
+    @behaviour SafeRPC.Authorizer
+
+    def authorize(%{meta: %{allow: true}}, _context), do: :ok
+    def authorize(_request, _context), do: {:error, :forbidden}
+  end
+
   defmodule EchoServer do
     use SafeRPC.Server
 
@@ -8,6 +15,11 @@ defmodule SafeRPCTest do
 
     def handle_call(:echo, payload, state), do: {:reply, {:ok, payload}, state}
     def handle_call(:count, _payload, state), do: {:reply, {:ok, state.count}, state}
+
+    def handle_call(:sleep, payload, state) do
+      Process.sleep(payload.ms)
+      {:reply, {:ok, :slept}, state}
+    end
 
     def handle_cast(:inc, amount, state), do: {:noreply, %{state | count: state.count + amount}}
   end
@@ -118,6 +130,32 @@ defmodule SafeRPCTest do
     assert {:error, :unauthorized} = SafeRPC.call(socket, :count, %{}, cap: "secret")
 
     GenServer.stop(pid)
+  end
+
+  test "runs an optional authorizer" do
+    socket = socket_path("authz")
+    {:ok, server} = EchoServer.start_link(socket: socket, authorizer: MetadataAuthorizer)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    assert {:error, :forbidden} = SafeRPC.call(client, :echo, :denied)
+    assert {:ok, :allowed} = SafeRPC.call(client, :echo, :allowed, meta: %{allow: true})
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
+  test "cancels asynchronous requests" do
+    socket = socket_path("cancel")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    request = SafeRPC.async(client, :sleep, %{ms: 1_000}, timeout: 5_000)
+
+    assert :ok = SafeRPC.cancel(request)
+    assert nil == SafeRPC.yield(request, 50)
+
+    GenServer.stop(client)
+    GenServer.stop(server)
   end
 
   test "rejects invalid terms" do

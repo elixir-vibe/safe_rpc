@@ -37,6 +37,10 @@ defmodule SafeRPC.Client do
     GenServer.call(client, {:send_request, :call, op, payload, opts})
   end
 
+  def cancel(%SafeRPC.Task{client: client, id: id}) do
+    GenServer.call(client, {:cancel, id})
+  end
+
   @impl true
   def init(opts) do
     transport = Keyword.get(opts, :transport, Unix)
@@ -69,6 +73,13 @@ defmodule SafeRPC.Client do
         {from, state} = pop_pending(id, state)
         GenServer.reply(from, {:error, reason})
         {:noreply, state}
+    end
+  end
+
+  def handle_call({:cancel, id}, _from, state) do
+    case state.transport.send(state.socket, Protocol.encode_cancel(id), 5_000) do
+      :ok -> {:reply, :ok, state}
+      error -> {:reply, error, state}
     end
   end
 
@@ -148,7 +159,8 @@ defmodule SafeRPC.Client do
 
   defp send_frame(state, kind, id, op, payload, opts) do
     cap = Keyword.get(opts, :cap, state.cap)
-    encoded = encode(kind, id, cap, op, payload)
+    meta = Keyword.get(opts, :meta, %{})
+    encoded = encode(kind, id, cap, op, payload, meta)
 
     case state.transport.send(state.socket, encoded, Keyword.get(opts, :timeout, 5_000)) do
       :ok -> {:ok, state}
@@ -189,7 +201,7 @@ defmodule SafeRPC.Client do
 
   defp send_blocking_request(transport, socket, kind, op, payload, cap, timeout) do
     id = make_ref()
-    encoded = encode(kind, id, cap, op, payload)
+    encoded = encode(kind, id, cap, op, payload, %{})
 
     with :ok <- transport.send(socket, encoded, timeout),
          {:ok, response} <- transport.recv(socket, timeout),
@@ -198,6 +210,9 @@ defmodule SafeRPC.Client do
     end
   end
 
-  defp encode(:call, id, cap, op, payload), do: Protocol.encode_call(id, cap, op, payload)
-  defp encode(:cast, id, cap, op, payload), do: Protocol.encode_cast(id, cap, op, payload)
+  defp encode(:call, id, cap, op, payload, meta),
+    do: Protocol.encode_call(id, cap, op, payload, meta)
+
+  defp encode(:cast, id, cap, op, payload, meta),
+    do: Protocol.encode_cast(id, cap, op, payload, meta)
 end

@@ -21,6 +21,8 @@ Implemented:
 - Task-like async requests with `async`, `await`, `yield`, and `shutdown`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
+- optional generic authorizer hook
+- request cancellation
 
 ## Example
 
@@ -46,11 +48,20 @@ end
 request = SafeRPC.async(client, :echo, %{hello: :async})
 {:ok, %{hello: :async}} = SafeRPC.await(request, 5_000)
 
+long_request = SafeRPC.async(client, :long_operation, %{}, timeout: 30_000)
+:ok = SafeRPC.cancel(long_request)
+
 {:ok, pool} = SafeRPC.ClientPool.start_link(socket: "/tmp/echo.sock", shards: 4)
 {:ok, 1} = SafeRPC.ClientPool.call(pool, {:tenant, :alice}, :count)
 ```
 
-## Capability checks
+## Authorization
+
+SafeRPC has two generic authorization layers:
+
+1. token/operation capability checks with `SafeRPC.Capability`
+2. an optional authorizer callback
+
 
 ```elixir
 cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
@@ -59,6 +70,21 @@ cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
 {:ok, :allowed} = SafeRPC.call("/tmp/echo.sock", :echo, :allowed, cap: "secret")
 {:error, :unauthorized} = SafeRPC.call("/tmp/echo.sock", :count, %{}, cap: "secret")
 ```
+
+For app-specific policy, pass an authorizer module:
+
+```elixir
+defmodule MyAuthorizer do
+  @behaviour SafeRPC.Authorizer
+
+  def authorize(%{op: :status}, _context), do: :ok
+  def authorize(_request, _context), do: {:error, :forbidden}
+end
+
+{:ok, server} = EchoServer.start_link(socket: "/tmp/echo.sock", authorizer: MyAuthorizer)
+```
+
+SafeRPC does not define users, tenants, roles, sessions, or resource semantics. Those belong in the application authorizer.
 
 ## Comparison with existing options
 

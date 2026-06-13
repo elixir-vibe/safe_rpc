@@ -25,6 +25,7 @@ defmodule SafeRPC.Server do
   defmodule Loop do
     use GenServer
 
+    alias SafeRPC.Authorizer.AllowAll
     alias SafeRPC.Capability
     alias SafeRPC.Server.Connection
     alias SafeRPC.Transport.Unix
@@ -42,6 +43,8 @@ defmodule SafeRPC.Server do
           transport: transport,
           user_state: user_state,
           capability: Keyword.get(opts, :capability),
+          authorizer: Keyword.get(opts, :authorizer, AllowAll),
+          auth_context: Keyword.get(opts, :auth_context),
           recv_timeout: Keyword.get(opts, :recv_timeout, 5_000)
         }
 
@@ -85,17 +88,23 @@ defmodule SafeRPC.Server do
     end
 
     defp dispatch(request, state) do
-      if authorized?(request, state.capability) do
+      with :ok <- authorize_capability(request, state.capability),
+           :ok <- state.authorizer.authorize(request, state.auth_context) do
         invoke(request, state)
       else
-        {{:error, :unauthorized}, state.user_state}
+        {:error, reason} -> {{:error, reason}, state.user_state}
       end
     end
 
-    defp authorized?(_request, nil), do: true
+    defp authorize_capability(_request, nil), do: :ok
 
-    defp authorized?(request, capability),
-      do: Capability.allowed?(capability, request.cap, request.op)
+    defp authorize_capability(request, capability) do
+      if Capability.allowed?(capability, request.cap, request.op) do
+        :ok
+      else
+        {:error, :unauthorized}
+      end
+    end
 
     defp invoke(%{kind: :call} = request, state) do
       case state.handler.handle_call(request.op, request.payload, state.user_state) do
