@@ -13,7 +13,7 @@ defmodule SafeRPC.Server do
         SafeRPC.Server.start_link(__MODULE__, opts)
       end
 
-      def handle_cast(op, payload, state), do: {:noreply, state}
+      def handle_cast(_op, _payload, state), do: {:noreply, state}
       defoverridable handle_cast: 3
     end
   end
@@ -26,21 +26,22 @@ defmodule SafeRPC.Server do
     use GenServer
 
     alias SafeRPC.{Capability, Protocol}
+    alias SafeRPC.Transport.Unix
 
     def init({handler, opts}) do
+      transport = Keyword.get(opts, :transport, Unix)
       socket = Keyword.fetch!(opts, :socket)
-      File.rm(socket)
-      File.mkdir_p!(Path.dirname(socket))
 
       with {:ok, user_state} <- handler.init(opts),
-           {:ok, listen} <-
-             :gen_tcp.listen(0, [:binary, active: false, packet: 4, ifaddr: {:local, socket}]) do
+           {:ok, listen} <- transport.listen(opts) do
         state = %{
           handler: handler,
           socket: socket,
           listen: listen,
+          transport: transport,
           user_state: user_state,
-          capability: Keyword.get(opts, :capability)
+          capability: Keyword.get(opts, :capability),
+          recv_timeout: Keyword.get(opts, :recv_timeout, 5_000)
         }
 
         send(self(), :accept)
@@ -49,7 +50,7 @@ defmodule SafeRPC.Server do
     end
 
     def handle_info(:accept, state) do
-      case :gen_tcp.accept(state.listen, 0) do
+      case state.transport.accept(state.listen, 0) do
         {:ok, client} ->
           GenServer.cast(self(), {:serve, client})
           send(self(), :accept)
@@ -65,18 +66,34 @@ defmodule SafeRPC.Server do
     end
 
     def handle_cast({:serve, client}, state) do
-      {:ok, payload} = :gen_tcp.recv(client, 0, 5_000)
-      {:ok, request} = Protocol.decode_request(payload)
-      {reply, user_state} = dispatch(request, state)
-      :ok = :gen_tcp.send(client, Protocol.encode_reply(request.id, reply))
-      :gen_tcp.close(client)
+      {_reply, user_state} = receive_and_dispatch(client, state)
+      state.transport.close(client)
       {:noreply, %{state | user_state: user_state}}
     end
 
     def terminate(_reason, state) do
-      :gen_tcp.close(state.listen)
+      state.transport.close(state.listen)
       File.rm(state.socket)
       :ok
+    end
+
+    defp receive_and_dispatch(client, state) do
+      with {:ok, payload} <- state.transport.recv(client, state.recv_timeout),
+           {:ok, request} <- Protocol.decode_request(payload) do
+        {reply, user_state} = dispatch(request, state)
+
+        :ok =
+          state.transport.send(
+            client,
+            Protocol.encode_reply(request.id, reply),
+            state.recv_timeout
+          )
+
+        {reply, user_state}
+      else
+        {:error, reason} ->
+          {{:error, reason}, state.user_state}
+      end
     end
 
     defp dispatch(request, state) do

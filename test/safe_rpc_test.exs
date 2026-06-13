@@ -23,6 +23,19 @@ defmodule SafeRPCTest do
     GenServer.stop(pid)
   end
 
+  test "uses a persistent client process" do
+    socket = socket_path("client")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    assert {:ok, %{hello: :client}} = SafeRPC.call(client, :echo, %{hello: :client})
+    assert {:ok, :noreply} = SafeRPC.cast(client, :inc, 3)
+    assert {:ok, 3} = SafeRPC.call(client, :count)
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
   test "checks capabilities" do
     socket = socket_path("cap")
     cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
@@ -35,7 +48,12 @@ defmodule SafeRPCTest do
     GenServer.stop(pid)
   end
 
+  test "rejects invalid terms" do
+    assert {:error, {:invalid_term, %ArgumentError{}}} =
+             SafeRPC.Protocol.decode_request(<<131, 112>>)
+  end
+
   defp socket_path(name) do
-    Path.join(System.tmp_dir!(), "gen-rpc-#{name}-#{System.unique_integer([:positive])}.sock")
+    Path.join(System.tmp_dir!(), "safe-rpc-#{name}-#{System.unique_integer([:positive])}.sock")
   end
 end

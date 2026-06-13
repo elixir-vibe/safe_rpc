@@ -11,9 +11,10 @@ Early prototype.
 Implemented:
 
 - Unix socket transport
+- transport behaviour
 - packet-framed ETF requests
 - `:erlang.binary_to_term(binary, [:safe])` decoding
-- `call` and `cast`
+- one-shot and client-process `call` / `cast`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
 
@@ -31,11 +32,12 @@ defmodule EchoServer do
   def handle_cast(:inc, amount, state), do: {:noreply, %{state | count: state.count + amount}}
 end
 
-{:ok, pid} = EchoServer.start_link(socket: "/tmp/echo.sock")
+{:ok, server} = EchoServer.start_link(socket: "/tmp/echo.sock")
+{:ok, client} = SafeRPC.Client.start_link(socket: "/tmp/echo.sock")
 
-{:ok, %{hello: :world}} = SafeRPC.call("/tmp/echo.sock", :echo, %{hello: :world})
-{:ok, :noreply} = SafeRPC.cast("/tmp/echo.sock", :inc, 1)
-{:ok, 1} = SafeRPC.call("/tmp/echo.sock", :count)
+{:ok, %{hello: :world}} = SafeRPC.call(client, :echo, %{hello: :world})
+{:ok, :noreply} = SafeRPC.cast(client, :inc, 1)
+{:ok, 1} = SafeRPC.call(client, :count)
 ```
 
 ## Capability checks
