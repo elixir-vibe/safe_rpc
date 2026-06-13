@@ -25,7 +25,8 @@ defmodule SafeRPC.Server do
   defmodule Loop do
     use GenServer
 
-    alias SafeRPC.{Capability, Protocol}
+    alias SafeRPC.Capability
+    alias SafeRPC.Server.Connection
     alias SafeRPC.Transport.Unix
 
     def init({handler, opts}) do
@@ -52,7 +53,14 @@ defmodule SafeRPC.Server do
     def handle_info(:accept, state) do
       case state.transport.accept(state.listen, 0) do
         {:ok, client} ->
-          GenServer.cast(self(), {:serve, client})
+          {:ok, _pid} =
+            Connection.start_link(
+              owner: self(),
+              transport: state.transport,
+              socket: client,
+              recv_timeout: state.recv_timeout
+            )
+
           send(self(), :accept)
           {:noreply, state}
 
@@ -65,35 +73,15 @@ defmodule SafeRPC.Server do
       end
     end
 
-    def handle_cast({:serve, client}, state) do
-      {_reply, user_state} = receive_and_dispatch(client, state)
-      state.transport.close(client)
-      {:noreply, %{state | user_state: user_state}}
+    def handle_call({:dispatch, request}, _from, state) do
+      {reply, user_state} = dispatch(request, state)
+      {:reply, reply, %{state | user_state: user_state}}
     end
 
     def terminate(_reason, state) do
       state.transport.close(state.listen)
       File.rm(state.socket)
       :ok
-    end
-
-    defp receive_and_dispatch(client, state) do
-      with {:ok, payload} <- state.transport.recv(client, state.recv_timeout),
-           {:ok, request} <- Protocol.decode_request(payload) do
-        {reply, user_state} = dispatch(request, state)
-
-        :ok =
-          state.transport.send(
-            client,
-            Protocol.encode_reply(request.id, reply),
-            state.recv_timeout
-          )
-
-        {reply, user_state}
-      else
-        {:error, reason} ->
-          {{:error, reason}, state.user_state}
-      end
     end
 
     defp dispatch(request, state) do

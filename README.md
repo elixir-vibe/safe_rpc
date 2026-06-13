@@ -14,7 +14,8 @@ Implemented:
 - transport behaviour
 - packet-framed ETF requests
 - `:erlang.binary_to_term(binary, [:safe])` decoding
-- one-shot and client-process `call` / `cast`
+- one-shot and persistent client-process `call` / `cast`
+- persistent server-side connections
 - Task-like async requests with `async`, `await`, `yield`, and `shutdown`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
