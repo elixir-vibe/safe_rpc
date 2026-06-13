@@ -55,6 +55,52 @@ cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
 {:error, :unauthorized} = SafeRPC.call("/tmp/echo.sock", :count, %{}, cap: "secret")
 ```
 
+## Comparison with existing options
+
+### Erlang distribution / `:rpc` / `:erpc`
+
+Erlang distribution is the most native way to talk between BEAM nodes, but it is designed for trusted clusters. Once nodes are connected, the trust boundary is broad: remote process interaction, code loading assumptions, global names, and cookie-based node authentication are intentionally powerful.
+
+SafeRPC is narrower. It uses Erlang terms, but exposes only explicit operations handled by a server callback module.
+
+Use Erlang distribution when all nodes are trusted peers. Use SafeRPC when the remote side should only get a small, auditable API surface.
+
+### `priestjim/gen_rpc`
+
+[`gen_rpc`](https://github.com/priestjim/gen_rpc) is a scalable replacement-style library for Erlang `rpc`. It provides TCP/SSL transports, async calls, multicall, per-key sharding, and module allow/deny lists.
+
+Its public API is remote MFA:
+
+```erlang
+gen_rpc:call(Node, Module, Function, Args).
+```
+
+SafeRPC intentionally does not expose client-selected MFA on the wire. Clients call named operations:
+
+```elixir
+SafeRPC.call(client, :status, %{})
+```
+
+Internally, SafeRPC may route an operation to MFA later, but authorization remains operation/resource-oriented rather than module-oriented.
+
+SafeRPC borrows ideas from `gen_rpc`—persistent connections, acceptor/connection supervision, async requests, sharding, and fanout—but keeps the protocol smaller and capability-scoped.
+
+### HTTP / JSON APIs
+
+HTTP is the best default for public APIs, browser clients, proxies, and language-neutral integrations. It has excellent tooling and operational visibility.
+
+SafeRPC is for BEAM-native or local control-plane APIs where HTTP routing, JSON encoding, headers, and text parsing are unnecessary overhead. Payloads are Erlang external terms, decoded with:
+
+```elixir
+:erlang.binary_to_term(binary, [:safe])
+```
+
+### gRPC
+
+gRPC is a strong choice for polyglot service APIs with schema-first contracts, streaming, and mature client generation.
+
+SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and preserves Elixir/Erlang terms, but it is not intended as a universal cross-language RPC layer.
+
 ## Design direction
 
 SafeRPC should borrow scalability patterns from `priestjim/gen_rpc` without adopting its public remote-MFA trust model:
