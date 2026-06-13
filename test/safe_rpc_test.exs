@@ -36,6 +36,33 @@ defmodule SafeRPCTest do
     GenServer.stop(server)
   end
 
+  test "runs asynchronous requests with Task-like API" do
+    socket = socket_path("async")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    request = SafeRPC.async(client, :echo, %{hello: :async})
+
+    assert %SafeRPC.Task{op: :echo} = request
+    assert {:ok, {:ok, %{hello: :async}}} = SafeRPC.yield(request, 1_000)
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
+  test "awaits asynchronous requests" do
+    socket = socket_path("await")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    request = SafeRPC.async(client, :echo, %{hello: :await})
+
+    assert {:ok, %{hello: :await}} = SafeRPC.await(request, 1_000)
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
   test "checks capabilities" do
     socket = socket_path("cap")
     cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])

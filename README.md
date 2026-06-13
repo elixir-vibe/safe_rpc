@@ -15,6 +15,7 @@ Implemented:
 - packet-framed ETF requests
 - `:erlang.binary_to_term(binary, [:safe])` decoding
 - one-shot and client-process `call` / `cast`
+- Task-like async requests with `async`, `await`, `yield`, and `shutdown`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
 
@@ -38,6 +39,9 @@ end
 {:ok, %{hello: :world}} = SafeRPC.call(client, :echo, %{hello: :world})
 {:ok, :noreply} = SafeRPC.cast(client, :inc, 1)
 {:ok, 1} = SafeRPC.call(client, :count)
+
+request = SafeRPC.async(client, :echo, %{hello: :async})
+{:ok, %{hello: :async}} = SafeRPC.await(request, 5_000)
 ```
 
 ## Capability checks
