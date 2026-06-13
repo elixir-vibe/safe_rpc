@@ -1,0 +1,41 @@
+defmodule SafeRPCTest do
+  use ExUnit.Case, async: true
+
+  defmodule EchoServer do
+    use SafeRPC.Server
+
+    def init(opts), do: {:ok, %{count: Keyword.get(opts, :count, 0)}}
+
+    def handle_call(:echo, payload, state), do: {:reply, {:ok, payload}, state}
+    def handle_call(:count, _payload, state), do: {:reply, {:ok, state.count}, state}
+
+    def handle_cast(:inc, amount, state), do: {:noreply, %{state | count: state.count + amount}}
+  end
+
+  test "calls and casts over Unix sockets" do
+    socket = socket_path("echo")
+    {:ok, pid} = EchoServer.start_link(socket: socket)
+
+    assert {:ok, %{hello: :world}} = SafeRPC.call(socket, :echo, %{hello: :world})
+    assert {:ok, :noreply} = SafeRPC.cast(socket, :inc, 2)
+    assert {:ok, 2} = SafeRPC.call(socket, :count)
+
+    GenServer.stop(pid)
+  end
+
+  test "checks capabilities" do
+    socket = socket_path("cap")
+    cap = SafeRPC.Capability.new(token: "secret", ops: [:echo])
+    {:ok, pid} = EchoServer.start_link(socket: socket, capability: cap)
+
+    assert {:ok, :allowed} = SafeRPC.call(socket, :echo, :allowed, cap: "secret")
+    assert {:error, :unauthorized} = SafeRPC.call(socket, :echo, :denied, cap: "bad")
+    assert {:error, :unauthorized} = SafeRPC.call(socket, :count, %{}, cap: "secret")
+
+    GenServer.stop(pid)
+  end
+
+  defp socket_path(name) do
+    Path.join(System.tmp_dir!(), "gen-rpc-#{name}-#{System.unique_integer([:positive])}.sock")
+  end
+end
