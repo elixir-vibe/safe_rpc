@@ -69,9 +69,12 @@ defmodule SafeRPC.Adapter.Plug do
 
   defp put_headers(conn, headers) do
     Enum.reduce(headers, conn, fn {name, value}, conn ->
-      Conn.put_req_header(conn, String.downcase(to_string(name)), to_string(value))
+      put_header(conn, String.downcase(to_string(name)), to_string(value))
     end)
   end
+
+  defp put_header(conn, "host", _value), do: conn
+  defp put_header(conn, name, value), do: Conn.put_req_header(conn, name, value)
 
   defp scheme("http"), do: :http
   defp scheme("https"), do: :https
