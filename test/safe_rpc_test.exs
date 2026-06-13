@@ -8,6 +8,26 @@ defmodule SafeRPCTest do
     def authorize(_request, _context), do: {:error, :forbidden}
   end
 
+  defmodule AdapterEchoService do
+    @behaviour SafeRPC.Adapter.Service
+
+    def init(_opts), do: {:ok, %{}}
+
+    def call(:echo, payload, meta, state),
+      do: {:ok, %{payload: payload, meta: meta, state: state}}
+
+    def call(:missing, _payload, _meta, _state), do: {:error, :missing}
+  end
+
+  defmodule AdapterEchoServer do
+    use SafeRPC.Adapter.Server, service: AdapterEchoService
+  end
+
+  defmodule AdapterRoutes do
+    def echo(payload, meta, _state), do: {:ok, {payload, meta}}
+    def named(op, payload, meta, _state), do: {:ok, {op, payload, meta}}
+  end
+
   defmodule EchoServer do
     use SafeRPC.Server
 
@@ -156,6 +176,51 @@ defmodule SafeRPCTest do
 
     GenServer.stop(client)
     GenServer.stop(server)
+  end
+
+  test "dispatches through adapter services" do
+    socket = socket_path("adapter")
+    {:ok, server} = AdapterEchoServer.start_link(socket: socket)
+
+    assert {:ok, %{payload: :hello, meta: %{source: :test}, state: %{}}} =
+             SafeRPC.call(socket, :echo, :hello, meta: %{source: :test})
+
+    assert {:error, :missing} = SafeRPC.call(socket, :missing)
+
+    GenServer.stop(server)
+  end
+
+  test "dispatches adapter route tables" do
+    routes = %{
+      echo: {AdapterRoutes, :echo, 3},
+      named: {AdapterRoutes, :named, 4}
+    }
+
+    assert {:ok, {:payload, %{a: 1}}} =
+             SafeRPC.Adapter.Dispatcher.call(routes, :echo, :payload, %{a: 1}, %{})
+
+    assert {:ok, {:named, :payload, %{a: 1}}} =
+             SafeRPC.Adapter.Dispatcher.call(routes, :named, :payload, %{a: 1}, %{})
+
+    assert {:error, :unknown_operation} =
+             SafeRPC.Adapter.Dispatcher.call(routes, :missing, :payload, %{}, %{})
+  end
+
+  test "defines neutral HTTP envelopes" do
+    request = %SafeRPC.Adapter.HTTP.Request{
+      method: "GET",
+      scheme: "https",
+      host: "example.com",
+      port: 443,
+      path: "/",
+      headers: [{"accept", "text/plain"}]
+    }
+
+    response = SafeRPC.Adapter.HTTP.Response.text(200, "ok")
+
+    assert request.host == "example.com"
+    assert response.status == 200
+    assert response.body == {:full, "ok"}
   end
 
   test "rejects invalid terms" do

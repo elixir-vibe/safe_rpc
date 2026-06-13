@@ -191,17 +191,18 @@ defmodule SafeRPC.Client do
     transport = Keyword.get(opts, :transport, Unix)
     timeout = Keyword.get(opts, :timeout, 5_000)
     cap = Keyword.get(opts, :cap)
+    meta = Keyword.get(opts, :meta, %{})
 
     with {:ok, port} <- transport.connect(Keyword.put(opts, :socket, socket)),
-         result <- send_blocking_request(transport, port, kind, op, payload, cap, timeout),
+         result <- send_blocking_request(transport, port, kind, op, payload, cap, meta, timeout),
          :ok <- transport.close(port) do
       result
     end
   end
 
-  defp send_blocking_request(transport, socket, kind, op, payload, cap, timeout) do
+  defp send_blocking_request(transport, socket, kind, op, payload, cap, meta, timeout) do
     id = make_ref()
-    encoded = encode(kind, id, cap, op, payload, %{})
+    encoded = encode(kind, id, cap, op, payload, meta)
 
     with :ok <- transport.send(socket, encoded, timeout),
          {:ok, response} <- transport.recv(socket, timeout),

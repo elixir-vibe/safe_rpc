@@ -23,6 +23,7 @@ Implemented:
 - per-request capability checks
 - optional generic authorizer hook
 - request cancellation
+- framework-agnostic adapter behaviours and HTTP envelopes
 
 ## Example
 
@@ -131,6 +132,55 @@ SafeRPC is for BEAM-native or local control-plane APIs where HTTP routing, JSON 
 gRPC is a strong choice for polyglot service APIs with schema-first contracts, streaming, and mature client generation.
 
 SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and preserves Elixir/Erlang terms, but it is not intended as a universal cross-language RPC layer.
+
+## Adapter layer
+
+SafeRPC includes a small framework-agnostic adapter namespace. It does not depend on Phoenix, Ash, Plug, Livery, or any web framework.
+
+Use `SafeRPC.Adapter.Service` to expose application operations:
+
+```elixir
+defmodule MyService do
+  @behaviour SafeRPC.Adapter.Service
+
+  def init(_opts), do: {:ok, %{}}
+
+  def call(:status, _payload, meta, state) do
+    {:ok, %{status: :ok, meta: meta, state: state}}
+  end
+end
+
+defmodule MyRPCServer do
+  use SafeRPC.Adapter.Server, service: MyService
+end
+
+{:ok, server} = MyRPCServer.start_link(socket: "/tmp/my.sock")
+{:ok, %{status: :ok}} = SafeRPC.call("/tmp/my.sock", :status, %{}, meta: %{trace_id: "..."})
+```
+
+For route tables, use `SafeRPC.Adapter.Dispatcher` with explicit op-to-MFA mappings:
+
+```elixir
+routes = %{
+  status: {MyAPI, :status, 3},
+  user_by_id: {MyAPI, :user_by_id, 3}
+}
+
+SafeRPC.Adapter.Dispatcher.call(routes, :status, payload, meta, state)
+```
+
+For HTTP bridges, use the neutral envelopes:
+
+```elixir
+%SafeRPC.Adapter.HTTP.Request{}
+%SafeRPC.Adapter.HTTP.Response{}
+```
+
+Framework-specific code should live outside SafeRPC:
+
+- xamal_proxy: Livery request/response <-> SafeRPC adapter HTTP envelopes
+- Phoenix: adapter HTTP envelope <-> Plug/Phoenix endpoint
+- Ash: adapter service operation <-> Ash action
 
 ## Design direction
 

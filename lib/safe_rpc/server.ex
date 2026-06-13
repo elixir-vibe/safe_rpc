@@ -4,6 +4,7 @@ defmodule SafeRPC.Server do
   @callback init(keyword()) :: {:ok, term()} | {:stop, term()}
   @callback handle_call(atom(), term(), term()) :: {:reply, term(), term()}
   @callback handle_cast(atom(), term(), term()) :: {:noreply, term()}
+  @callback handle_request(map(), term()) :: {:reply, term(), term()}
 
   defmacro __using__(_opts) do
     quote do
@@ -14,7 +15,18 @@ defmodule SafeRPC.Server do
       end
 
       def handle_cast(_op, _payload, state), do: {:noreply, state}
-      defoverridable handle_cast: 3
+
+      def handle_request(%{kind: :call, op: op, payload: payload}, state) do
+        handle_call(op, payload, state)
+      end
+
+      def handle_request(%{kind: :cast, op: op, payload: payload}, state) do
+        case handle_cast(op, payload, state) do
+          {:noreply, state} -> {:reply, {:ok, :noreply}, state}
+        end
+      end
+
+      defoverridable handle_cast: 3, handle_request: 2
     end
   end
 
@@ -106,15 +118,9 @@ defmodule SafeRPC.Server do
       end
     end
 
-    defp invoke(%{kind: :call} = request, state) do
-      case state.handler.handle_call(request.op, request.payload, state.user_state) do
+    defp invoke(request, state) do
+      case state.handler.handle_request(request, state.user_state) do
         {:reply, reply, user_state} -> {reply, user_state}
-      end
-    end
-
-    defp invoke(%{kind: :cast} = request, state) do
-      case state.handler.handle_cast(request.op, request.payload, state.user_state) do
-        {:noreply, user_state} -> {{:ok, :noreply}, user_state}
       end
     end
   end
