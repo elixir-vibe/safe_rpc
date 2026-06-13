@@ -21,7 +21,11 @@ defmodule SafeRPC.MixProject do
 
   def cli, do: [preferred_envs: [ci: :test]]
 
-  defp deps, do: []
+  defp deps do
+    [
+      {:plug, "~> 1.18"}
+    ]
+  end
 
   defp aliases do
     [

@@ -135,7 +135,7 @@ SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and pr
 
 ## Adapter layer
 
-SafeRPC includes a small framework-agnostic adapter namespace. It does not depend on Phoenix, Ash, Plug, Livery, or any web framework.
+SafeRPC includes a small framework-agnostic adapter namespace. The core adapter layer does not depend on Phoenix, Ash, Livery, or any web framework.
 
 Use `SafeRPC.Adapter.Service` to expose application operations:
 
@@ -176,11 +176,13 @@ For HTTP bridges, use the neutral envelopes:
 %SafeRPC.Adapter.HTTP.Response{}
 ```
 
-Framework-specific code should live outside SafeRPC:
+Framework-specific code should mostly live outside SafeRPC:
 
 - xamal_proxy: Livery request/response <-> SafeRPC adapter HTTP envelopes
-- Phoenix: adapter HTTP envelope <-> Plug/Phoenix endpoint
+- Plug/Phoenix: adapter HTTP envelope <-> Plug endpoint via `SafeRPC.Adapter.Plug`
 - Ash: adapter service operation <-> Ash action
+
+The Plug adapter is included because Phoenix endpoints are Plug endpoints and the dependency boundary remains generic Plug, not Phoenix-specific.
 
 ## Design direction
 

@@ -26,7 +26,7 @@ defmodule SafeRPC.Server do
         end
       end
 
-      defoverridable handle_cast: 3, handle_request: 2
+      defoverridable start_link: 1, handle_cast: 3, handle_request: 2
     end
   end
 
@@ -87,6 +87,9 @@ defmodule SafeRPC.Server do
           {:stop, reason, state}
       end
     end
+
+    def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
+    def handle_info({_ref, {_status, _headers, _body}}, state), do: {:noreply, state}
 
     def handle_call({:dispatch, request}, _from, state) do
       {reply, user_state} = dispatch(request, state)
