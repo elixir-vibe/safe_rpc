@@ -23,7 +23,8 @@ defmodule SafeRPC.MixProject do
 
   defp deps do
     [
-      {:plug, "~> 1.18"}
+      {:plug, "~> 1.18"},
+      {:benchee, "~> 1.3", only: :dev, runtime: false}
     ]
   end
 
