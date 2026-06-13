@@ -17,6 +17,7 @@ Implemented:
 - one-shot and persistent client-process `call` / `cast`
 - persistent server-side connections
 - request id tracking for multiple in-flight client requests
+- sharded client pools
 - Task-like async requests with `async`, `await`, `yield`, and `shutdown`
 - `use SafeRPC.Server` callback wrapper
 - per-request capability checks
@@ -44,6 +45,9 @@ end
 
 request = SafeRPC.async(client, :echo, %{hello: :async})
 {:ok, %{hello: :async}} = SafeRPC.await(request, 5_000)
+
+{:ok, pool} = SafeRPC.ClientPool.start_link(socket: "/tmp/echo.sock", shards: 4)
+{:ok, 1} = SafeRPC.ClientPool.call(pool, {:tenant, :alice}, :count)
 ```
 
 ## Capability checks

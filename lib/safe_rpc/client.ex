@@ -92,6 +92,10 @@ defmodule SafeRPC.Client do
     {:noreply, handle_reply(payload, state)}
   end
 
+  def handle_info({:safe_rpc_closed, :closed}, state) do
+    {:stop, :normal, state}
+  end
+
   def handle_info({:safe_rpc_closed, reason}, state) do
     state = fail_pending(reason, state)
     {:stop, reason, state}

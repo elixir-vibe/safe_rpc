@@ -63,6 +63,36 @@ defmodule SafeRPCTest do
     GenServer.stop(server)
   end
 
+  test "routes calls through a sharded client pool" do
+    socket = socket_path("pool")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, pool} = SafeRPC.ClientPool.start_link(socket: socket, shards: 2)
+
+    assert {:ok, %{hello: :pool}} =
+             SafeRPC.ClientPool.call(pool, {:workspace, :alice, :blog}, :echo, %{hello: :pool})
+
+    assert {:ok, :noreply} = SafeRPC.ClientPool.cast(pool, :counter, :inc, 4)
+    assert {:ok, 4} = SafeRPC.ClientPool.call(pool, :counter, :count)
+
+    request = SafeRPC.ClientPool.async(pool, :async, :echo, %{hello: :pool_async})
+    assert {:ok, %{hello: :pool_async}} = SafeRPC.await(request, 1_000)
+
+    GenServer.stop(pool)
+    GenServer.stop(server)
+  end
+
+  test "uses stable shard selection" do
+    socket = socket_path("pool-stable")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, pool} = SafeRPC.ClientPool.start_link(socket: socket, shards: 4)
+
+    assert SafeRPC.ClientPool.client(pool, :same_key) ==
+             SafeRPC.ClientPool.client(pool, :same_key)
+
+    GenServer.stop(pool)
+    GenServer.stop(server)
+  end
+
   test "tracks multiple asynchronous requests" do
     socket = socket_path("multi-async")
     {:ok, server} = EchoServer.start_link(socket: socket)
