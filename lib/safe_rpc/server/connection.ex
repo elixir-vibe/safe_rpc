@@ -43,6 +43,7 @@ defmodule SafeRPC.Server.Connection do
 
     case state.transport.send(state.socket, Protocol.encode_reply(id, reply), state.recv_timeout) do
       :ok -> {:noreply, state}
+      {:error, :closed} -> {:stop, :normal, state}
       {:error, reason} -> {:stop, reason, state}
     end
   end
@@ -65,9 +66,13 @@ defmodule SafeRPC.Server.Connection do
         recv_loop(owner, transport, socket)
 
       {:error, reason} ->
-        send(owner, {:safe_rpc_closed, reason})
+        send(owner, {:safe_rpc_closed, normalize_close_reason(reason)})
     end
   end
+
+  defp normalize_close_reason(:closed), do: :closed
+  defp normalize_close_reason(:enotconn), do: :closed
+  defp normalize_close_reason(reason), do: reason
 
   defp handle_payload(payload, state) do
     case Protocol.decode_request(payload) do

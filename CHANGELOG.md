@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2
+
+- Treat closed server reply sockets as normal connection shutdowns to avoid noisy crash reports during client disconnects or upstream restarts.
+
 ## v0.1.1
 
 - Fixed persistent clients so pending calls receive errors when the server closes the connection.
