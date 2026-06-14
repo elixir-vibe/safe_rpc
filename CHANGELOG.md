@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.3
+
+- Treat `:einval` socket close notifications as normal shutdowns during server-side connection teardown.
+
 ## v0.1.2
 
 - Treat closed server reply sockets as normal connection shutdowns to avoid noisy crash reports during client disconnects or upstream restarts.

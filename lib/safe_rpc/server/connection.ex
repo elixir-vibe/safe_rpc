@@ -72,6 +72,7 @@ defmodule SafeRPC.Server.Connection do
 
   defp normalize_close_reason(:closed), do: :closed
   defp normalize_close_reason(:enotconn), do: :closed
+  defp normalize_close_reason(:einval), do: :closed
   defp normalize_close_reason(reason), do: reason
 
   defp handle_payload(payload, state) do
