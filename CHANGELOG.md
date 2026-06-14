@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.1
+
+- Fixed persistent clients so pending calls receive errors when the server closes the connection.
+
 ## v0.1.0
 
 Initial package release.
