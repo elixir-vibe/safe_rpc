@@ -68,6 +68,17 @@ defmodule SafeRPCTest do
     GenServer.stop(server)
   end
 
+  test "persistent client replies to pending calls when the server closes" do
+    socket = socket_path("client-close")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+
+    task = Task.async(fn -> SafeRPC.call(client, :sleep, %{ms: 1_000}, timeout: 5_000) end)
+    GenServer.stop(server)
+
+    assert {:error, _reason} = Task.await(task, 1_000)
+  end
+
   test "runs asynchronous requests with Task-like API" do
     socket = socket_path("async")
     {:ok, server} = EchoServer.start_link(socket: socket)

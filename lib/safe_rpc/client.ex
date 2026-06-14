@@ -70,8 +70,8 @@ defmodule SafeRPC.Client do
         {:noreply, state}
 
       {:error, reason, state} ->
-        {from, state} = pop_pending(id, state)
-        GenServer.reply(from, {:error, reason})
+        {pending, state} = pop_pending(id, state)
+        reply(pending.from, {:error, reason})
         {:noreply, state}
     end
   end
@@ -104,6 +104,7 @@ defmodule SafeRPC.Client do
   end
 
   def handle_info({:safe_rpc_closed, :closed}, state) do
+    state = fail_pending(:closed, state)
     {:stop, :normal, state}
   end
 
