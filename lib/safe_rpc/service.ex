@@ -94,7 +94,7 @@ defmodule SafeRPC.Service do
 
       @doc false
       @impl SafeRPC.Adapter.Service
-      def describe(_state), do: __safe_rpc_descriptor__()
+      def __safe_rpc_describe__(_state), do: __safe_rpc_descriptor__()
     end
   end
 

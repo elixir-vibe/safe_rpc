@@ -3,7 +3,7 @@ defmodule SafeRPC.Adapter.Service do
 
   @callback init(keyword()) :: {:ok, term()} | {:stop, term()}
   @callback call(atom(), term(), map(), term()) :: {:ok, term()} | {:error, term()}
-  @callback describe(term()) :: SafeRPC.Descriptor.t() | {:error, term()}
+  @callback __safe_rpc_describe__(term()) :: SafeRPC.Descriptor.t() | {:error, term()}
 
-  @optional_callbacks describe: 1
+  @optional_callbacks __safe_rpc_describe__: 1
 end

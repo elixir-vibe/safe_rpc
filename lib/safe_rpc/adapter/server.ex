@@ -36,8 +36,8 @@ defmodule SafeRPC.Adapter.Server do
   end
 
   def describe(service, state) do
-    if function_exported?(service, :describe, 1) do
-      {:ok, service.describe(state)}
+    if function_exported?(service, :__safe_rpc_describe__, 1) do
+      {:ok, service.__safe_rpc_describe__(state)}
     else
       {:error, :unsupported}
     end
