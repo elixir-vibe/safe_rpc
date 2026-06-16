@@ -11,8 +11,8 @@ defmodule SafeRPC.Service do
         def status(_payload, _meta, state), do: {:ok, state}
       end
 
-  Only functions marked with `@rpc` are exposed. Function names are operation
-  names by default. The Elixir module is the exposed boundary in descriptors.
+  Only functions marked with `@rpc` are exposed. Operation identity is the
+  Elixir module/function pair `{Module, function}`.
   """
 
   alias SafeRPC.{Descriptor, Op}
@@ -67,8 +67,8 @@ defmodule SafeRPC.Service do
       |> Enum.reverse()
 
     call_clauses =
-      Enum.map(ops, fn %{op: op, function: function, arity: arity} ->
-        call_clause(op, function, arity)
+      Enum.map(ops, fn %{module: module, function: function, arity: arity} ->
+        call_clause(module, function, arity)
       end)
 
     quote do
@@ -131,7 +131,7 @@ defmodule SafeRPC.Service do
     meta = Map.new(opts)
 
     Module.put_attribute(module, :safe_rpc_ops, %{
-      op: name,
+      module: module,
       function: name,
       arity: arity,
       docs: doc_string(doc),
@@ -147,9 +147,9 @@ defmodule SafeRPC.Service do
     raise ArgumentError, "@rpc expects true or keyword options, got: #{inspect(other)}"
   end
 
-  defp call_clause(op, function, 3) do
+  defp call_clause(module, function, 3) do
     quote do
-      def call(unquote(op), payload, meta, state),
+      def call({unquote(module), unquote(function)}, payload, meta, state),
         do: unquote(function)(payload, meta, state)
     end
   end
@@ -158,8 +158,8 @@ defmodule SafeRPC.Service do
     key = {attrs.function, attrs.arity}
 
     %Op{
-      name: attrs.op,
-      module: module,
+      name: attrs.function,
+      module: attrs.module || module,
       function: attrs.function,
       arity: attrs.arity,
       docs: attrs.docs || Map.get(docs, key),

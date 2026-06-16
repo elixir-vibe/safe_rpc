@@ -107,13 +107,13 @@ Its public API is remote MFA:
 gen_rpc:call(Node, Module, Function, Args).
 ```
 
-SafeRPC intentionally does not expose client-selected MFA on the wire. Clients call named operations:
+SafeRPC intentionally does not expose arbitrary client-selected MFA on the wire. Services built with `use SafeRPC` expose explicitly marked module/function pairs:
 
 ```elixir
-SafeRPC.call(client, :status, %{})
+SafeRPC.call(client, {MyApp, :status}, %{})
 ```
 
-Internally, SafeRPC may route an operation to MFA later, but authorization remains operation/resource-oriented rather than module-oriented.
+Adapter services may still define their own operation terms, but `use SafeRPC` keeps operation identity aligned with Elixir modules and functions.
 
 SafeRPC borrows ideas from `gen_rpc`—persistent connections, acceptor/connection supervision, async requests, sharding, and fanout—but keeps the protocol smaller and capability-scoped.
 
@@ -166,14 +166,14 @@ bindings =
   |> File.read!()
   |> :erlang.binary_to_term([:safe])
 
-SafeRPC.call(bindings.catalog.socket, :status)
+SafeRPC.call(bindings.catalog.socket, {Catalog.API, :status})
 ```
 
 SafeRPC does not require a binding-file loader module; the file is just an ETF-encoded `SafeRPC.local_bindings()` term.
 
 ## Elixir-native services
 
-Use `SafeRPC` directly in an application module when you want a small Erlang-distribution-like API without exposing arbitrary remote MFA. Only functions marked with `@rpc` are callable; function names become operation names by default.
+Use `SafeRPC` directly in an application module when you want a small Erlang-distribution-like API without exposing arbitrary remote MFA. Only functions marked with `@rpc` are callable; operation identity is `{Module, function}`.
 
 ```elixir
 defmodule MyApp do
@@ -204,7 +204,7 @@ end
 Call operations normally:
 
 ```elixir
-{:ok, models} = SafeRPC.call(socket, :models)
+{:ok, models} = SafeRPC.call(socket, {MyApp, :models})
 ```
 
 Discover the exposed service descriptor:

@@ -213,12 +213,12 @@ defmodule SafeRPCTest do
     socket = socket_path("native")
     {:ok, server} = NativeServer.start_link(socket: socket, booted?: true)
 
-    assert {:ok, [:small, :large]} = SafeRPC.call(socket, :models)
+    assert {:ok, [:small, :large]} = SafeRPC.call(socket, {NativeService, :models})
 
     assert {:ok, %{meta: %{trace_id: "abc"}, state: [socket: ^socket, booted?: true]}} =
-             SafeRPC.call(socket, :status, %{}, meta: %{trace_id: "abc"})
+             SafeRPC.call(socket, {NativeService, :status}, %{}, meta: %{trace_id: "abc"})
 
-    assert {:error, :unknown_operation} = SafeRPC.call(socket, :hidden)
+    assert {:error, :unknown_operation} = SafeRPC.call(socket, {NativeService, :hidden})
 
     GenServer.stop(server)
   end
