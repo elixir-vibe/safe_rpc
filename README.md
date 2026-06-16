@@ -139,14 +139,14 @@ Use `SafeRPC` directly in an application module when you want a small Erlang-dis
 
 ```elixir
 defmodule MyApp do
-  use SafeRPC, service: :my_app, surface: :api
+  use SafeRPC, service: :my_app
 
   @rpc true
   @doc "Return available models."
   @spec models(map(), map(), term()) :: {:ok, [map()]} | {:error, term()}
   def models(_payload, _meta, _state), do: {:ok, [%{id: "small"}]}
 
-  @rpc surface: :control
+  @rpc true
   @doc "Return service status."
   @spec status(map(), map(), term()) :: {:ok, map()}
   def status(_payload, _meta, state), do: {:ok, %{state: state}}
@@ -173,10 +173,10 @@ Discover the exposed service descriptor:
 
 ```elixir
 {:ok, descriptor} = SafeRPC.describe(socket)
-descriptor.surfaces.api.ops.models.docs
+descriptor.modules[MyApp].ops.models.docs
 ```
 
-Descriptors include operation names, surfaces, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
+Descriptors include exposed modules, operation names, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
 
 For HTTP forwarding, expose an operation such as `:http_request` with `@rpc` the same way as any other operation.
 

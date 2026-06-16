@@ -24,14 +24,14 @@ defmodule SafeRPCTest do
   end
 
   defmodule NativeService do
-    use SafeRPC, service: :native, version: "1", surface: :api
+    use SafeRPC, service: :native, version: "1"
 
     @rpc true
     @doc "Return available models."
     @spec models(map(), map(), term()) :: {:ok, [atom()]}
     def models(_payload, _meta, _state), do: {:ok, [:small, :large]}
 
-    @rpc surface: :control
+    @rpc true
     @doc "Return service status."
     @spec status(map(), map(), term()) :: {:ok, map()}
     def status(_payload, meta, state), do: {:ok, %{meta: meta, state: state}}
@@ -227,15 +227,14 @@ defmodule SafeRPCTest do
     descriptor = NativeService.__safe_rpc_descriptor__()
 
     assert %SafeRPC.Descriptor{service: :native, module: NativeService, version: "1"} = descriptor
-    assert [:api, :control] = descriptor.surfaces |> Map.keys() |> Enum.sort()
-    assert %{models: models} = descriptor.surfaces.api.ops
+    assert %{ops: ops, meta: %{}} = Map.fetch!(descriptor.modules, NativeService)
+    assert %{models: models, status: status} = ops
     assert models.name == :models
-    assert models.surface == :api
+    assert models.module == NativeService
     assert models.function == :models
     assert models.arity == 3
     assert models.docs == "Return available models."
     assert models.spec != nil
-    assert %{status: status} = descriptor.surfaces.control.ops
     assert status.docs == "Return service status."
   end
 
@@ -243,11 +242,11 @@ defmodule SafeRPCTest do
     socket = socket_path("describe")
     {:ok, server} = NativeServer.start_link(socket: socket)
 
-    assert {:ok, %SafeRPC.Descriptor{service: :native, surfaces: surfaces}} =
+    assert {:ok, %SafeRPC.Descriptor{service: :native, modules: modules}} =
              SafeRPC.describe(socket)
 
-    assert Map.has_key?(surfaces.api.ops, :models)
-    assert Map.has_key?(surfaces.control.ops, :status)
+    assert Map.has_key?(modules[NativeService].ops, :models)
+    assert Map.has_key?(modules[NativeService].ops, :status)
 
     GenServer.stop(server)
   end

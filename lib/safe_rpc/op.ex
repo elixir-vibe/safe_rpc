@@ -3,7 +3,6 @@ defmodule SafeRPC.Op do
 
   @type t :: %__MODULE__{
           name: atom(),
-          surface: atom() | String.t(),
           module: module(),
           function: atom(),
           arity: non_neg_integer(),
@@ -14,7 +13,6 @@ defmodule SafeRPC.Op do
 
   defstruct [
     :name,
-    :surface,
     :module,
     :function,
     :arity,

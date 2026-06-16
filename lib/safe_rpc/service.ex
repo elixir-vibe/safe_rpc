@@ -3,7 +3,7 @@ defmodule SafeRPC.Service do
   Elixir-native SafeRPC service DSL.
 
       defmodule MyApp do
-        use SafeRPC, service: :my_app, surface: :api
+        use SafeRPC, service: :my_app
 
         @rpc true
         @doc "Return service status."
@@ -12,18 +12,16 @@ defmodule SafeRPC.Service do
       end
 
   Only functions marked with `@rpc` are exposed. Function names are operation
-  names by default. The module-level `:surface` option is the default surface;
-  use `@rpc surface: :control` to override it for one function.
+  names by default. The Elixir module is the exposed boundary in descriptors.
   """
 
-  alias SafeRPC.{Descriptor, Op, Surface}
+  alias SafeRPC.{Descriptor, Op}
 
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
       @behaviour SafeRPC.Adapter.Service
       @safe_rpc_service Keyword.fetch!(opts, :service)
       @safe_rpc_version Keyword.get(opts, :version)
-      @safe_rpc_default_surface Keyword.get(opts, :surface, :default)
 
       Module.register_attribute(__MODULE__, :rpc, persist: false)
       Module.register_attribute(__MODULE__, :safe_rpc_ops, accumulate: true, persist: true)
@@ -102,15 +100,20 @@ defmodule SafeRPC.Service do
     docs = docs_by_function(module)
     specs = specs_by_function(module)
 
-    surfaces =
-      ops
-      |> Enum.map(&op(module, &1, docs, specs))
-      |> Enum.group_by(& &1.surface)
-      |> Map.new(fn {surface, ops} ->
-        {surface, %Surface{name: surface, ops: Map.new(ops, &{&1.name, &1})}}
-      end)
+    module_description = %{
+      ops:
+        ops
+        |> Enum.map(&op(module, &1, docs, specs))
+        |> Map.new(&{&1.name, &1}),
+      meta: %{}
+    }
 
-    %Descriptor{service: service, module: module, version: version, surfaces: surfaces}
+    %Descriptor{
+      service: service,
+      module: module,
+      version: version,
+      modules: %{module => module_description}
+    }
   end
 
   defp register_rpc!(module, :defp, name, _arity, _rpc_opts, _doc, _spec) do
@@ -125,12 +128,10 @@ defmodule SafeRPC.Service do
     end
 
     opts = normalize_rpc_opts(rpc_opts)
-    surface = Keyword.get(opts, :surface, Module.get_attribute(module, :safe_rpc_default_surface))
-    meta = opts |> Keyword.drop([:surface]) |> Map.new()
+    meta = Map.new(opts)
 
     Module.put_attribute(module, :safe_rpc_ops, %{
       op: name,
-      surface: surface,
       function: name,
       arity: arity,
       docs: doc_string(doc),
@@ -158,7 +159,6 @@ defmodule SafeRPC.Service do
 
     %Op{
       name: attrs.op,
-      surface: attrs.surface,
       module: module,
       function: attrs.function,
       arity: attrs.arity,
