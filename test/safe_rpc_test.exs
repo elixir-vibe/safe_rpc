@@ -24,7 +24,7 @@ defmodule SafeRPCTest do
   end
 
   defmodule NativeService do
-    use SafeRPC, service: :native, version: "1", meta: %{kind: :native_service}
+    use SafeRPC, service: :native, version: "1"
 
     @rpc true
     @doc "Return available models."
@@ -226,16 +226,8 @@ defmodule SafeRPCTest do
   test "describes @rpc functions with docs and typespecs" do
     descriptor = NativeService.__safe_rpc_descriptor__()
 
-    assert %SafeRPC.Descriptor{
-             service: :native,
-             module: NativeService,
-             version: "1",
-             meta: %{kind: :native_service}
-           } = descriptor
-
-    assert %{ops: ops, meta: %{kind: :native_service}} =
-             Map.fetch!(descriptor.modules, NativeService)
-
+    assert %SafeRPC.Descriptor{service: :native, module: NativeService, version: "1"} = descriptor
+    assert %{ops: ops, meta: %{}} = Map.fetch!(descriptor.modules, NativeService)
     assert %{models: models, status: status} = ops
     assert models.name == :models
     assert models.module == NativeService
