@@ -288,6 +288,23 @@ defmodule SafeRPCTest do
              SafeRPC.Adapter.Dispatcher.call(routes, :missing, :payload, %{}, %{})
   end
 
+  test "documents local binding terms as safe ETF" do
+    bindings = %{
+      catalog: %{
+        socket: "/run/apps/catalog/rpc.sock",
+        modules: [SafeRPCTest.NativeService],
+        listener: :rpc,
+        upstream: "unix:/run/apps/catalog/rpc.sock",
+        unit: "app-catalog.service"
+      }
+    }
+
+    assert ^bindings =
+             bindings
+             |> :erlang.term_to_binary()
+             |> :erlang.binary_to_term([:safe])
+  end
+
   test "defines neutral HTTP envelopes" do
     request = %SafeRPC.Adapter.HTTP.Request{
       method: "GET",

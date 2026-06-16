@@ -133,6 +133,44 @@ gRPC is a strong choice for polyglot service APIs with schema-first contracts, s
 
 SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and preserves Elixir/Erlang terms, but it is not intended as a universal cross-language RPC layer.
 
+## Local binding terms
+
+Local service discovery metadata is a plain Erlang term encoded as ETF:
+
+```elixir
+binary = :erlang.term_to_binary(bindings)
+bindings = :erlang.binary_to_term(binary, [:safe])
+```
+
+The standard binding term is a map from service name to connection metadata:
+
+```elixir
+%{
+  catalog: %{
+    socket: "/run/apps/catalog/rpc.sock",
+    modules: [Catalog.API, Catalog.Admin],
+    listener: :rpc,
+    upstream: "unix:/run/apps/catalog/rpc.sock",
+    unit: "app-catalog.service"
+  }
+}
+```
+
+Only `:socket` is required by SafeRPC. `:modules` is the module-level capability metadata exposed by the deployer; exact callable functions still come from `SafeRPC.describe/2`. Other keys are operational metadata for supervisors, deploy tools, and diagnostics.
+
+A consumer should get the ETF path from its runtime environment or convention and then call SafeRPC directly:
+
+```elixir
+bindings =
+  System.fetch_env!("HOSTKIT_RPC_BINDINGS")
+  |> File.read!()
+  |> :erlang.binary_to_term([:safe])
+
+SafeRPC.call(bindings.catalog.socket, :status)
+```
+
+SafeRPC does not require a binding-file loader module; the file is just an ETF-encoded `SafeRPC.local_bindings()` term.
+
 ## Elixir-native services
 
 Use `SafeRPC` directly in an application module when you want a small Erlang-distribution-like API without exposing arbitrary remote MFA. Only functions marked with `@rpc` are callable; function names become operation names by default.

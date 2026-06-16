@@ -3,6 +3,17 @@ defmodule SafeRPC do
 
   alias SafeRPC.Client
 
+  @type local_binding :: %{
+          required(:socket) => Path.t(),
+          optional(:modules) => [module()],
+          optional(:listener) => atom() | String.t(),
+          optional(:unit) => String.t(),
+          optional(:upstream) => String.t(),
+          optional(atom()) => term()
+        }
+
+  @type local_bindings :: %{optional(atom() | String.t()) => local_binding()}
+
   @describe_op :safe_rpc_describe
 
   defmacro __using__(opts) do
