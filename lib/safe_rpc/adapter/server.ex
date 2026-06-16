@@ -11,11 +11,19 @@ defmodule SafeRPC.Adapter.Server do
       def init(opts), do: unquote(service).init(opts)
 
       @impl true
+      def handle_call(:safe_rpc_describe, _payload, state) do
+        {:reply, SafeRPC.Adapter.Server.describe(unquote(service), state), state}
+      end
+
       def handle_call(op, payload, state) do
         {:reply, unquote(service).call(op, payload, %{}, state), state}
       end
 
       @impl true
+      def handle_request(%{kind: :call, op: :safe_rpc_describe}, state) do
+        {:reply, SafeRPC.Adapter.Server.describe(unquote(service), state), state}
+      end
+
       def handle_request(%{kind: :call, op: op, payload: payload, meta: meta}, state) do
         {:reply, unquote(service).call(op, payload, meta, state), state}
       end
@@ -24,6 +32,14 @@ defmodule SafeRPC.Adapter.Server do
         _result = unquote(service).call(op, payload, meta, state)
         {:reply, {:ok, :noreply}, state}
       end
+    end
+  end
+
+  def describe(service, state) do
+    if function_exported?(service, :describe, 1) do
+      {:ok, service.describe(state)}
+    else
+      {:error, :unsupported}
     end
   end
 end

@@ -133,6 +133,53 @@ gRPC is a strong choice for polyglot service APIs with schema-first contracts, s
 
 SafeRPC is smaller and BEAM-focused. It does not require protobuf schemas and preserves Elixir/Erlang terms, but it is not intended as a universal cross-language RPC layer.
 
+## Elixir-native services
+
+Use `SafeRPC` directly in an application module when you want a small Erlang-distribution-like API without exposing arbitrary remote MFA. Only functions marked with `@rpc` are callable; function names become operation names by default.
+
+```elixir
+defmodule MyApp do
+  use SafeRPC, service: :my_app, surface: :api
+
+  @rpc true
+  @doc "Return available models."
+  @spec models(map(), map(), term()) :: {:ok, [map()]} | {:error, term()}
+  def models(_payload, _meta, _state), do: {:ok, [%{id: "small"}]}
+
+  @rpc surface: :control
+  @doc "Return service status."
+  @spec status(map(), map(), term()) :: {:ok, map()}
+  def status(_payload, _meta, state), do: {:ok, %{state: state}}
+
+  def local_helper, do: :not_exposed
+end
+```
+
+Serve it with the normal adapter server wrapper:
+
+```elixir
+defmodule MyApp.RPCServer do
+  use SafeRPC.Adapter.Server, service: MyApp
+end
+```
+
+Call operations normally:
+
+```elixir
+{:ok, models} = SafeRPC.call(socket, :models)
+```
+
+Discover the exposed service descriptor:
+
+```elixir
+{:ok, descriptor} = SafeRPC.describe(socket)
+descriptor.surfaces.api.ops.models.docs
+```
+
+Descriptors include operation names, surfaces, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
+
+For HTTP forwarding, expose an operation such as `:http_request` with `@rpc` the same way as any other operation.
+
 ## Adapter layer
 
 SafeRPC includes a small framework-agnostic adapter namespace. The core adapter layer does not depend on Phoenix, Ash, Livery, or any web framework.

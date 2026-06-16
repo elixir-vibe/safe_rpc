@@ -3,8 +3,20 @@ defmodule SafeRPC do
 
   alias SafeRPC.Client
 
+  @describe_op :safe_rpc_describe
+
+  defmacro __using__(opts) do
+    quote do
+      use SafeRPC.Service, unquote(opts)
+    end
+  end
+
   defdelegate call(socket, op, payload \\ %{}, opts \\ []), to: Client
   defdelegate cast(socket, op, payload \\ %{}, opts \\ []), to: Client
+
+  def describe(socket_or_client, opts \\ []) do
+    call(socket_or_client, @describe_op, Keyword.get(opts, :filter, %{}), opts)
+  end
 
   def async(client, op, payload \\ %{}, opts \\ []) do
     case Client.send_request(client, op, payload, opts) do

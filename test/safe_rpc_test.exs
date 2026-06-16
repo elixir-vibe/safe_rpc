@@ -23,6 +23,26 @@ defmodule SafeRPCTest do
     use SafeRPC.Adapter.Server, service: AdapterEchoService
   end
 
+  defmodule NativeService do
+    use SafeRPC, service: :native, version: "1", surface: :api
+
+    @rpc true
+    @doc "Return available models."
+    @spec models(map(), map(), term()) :: {:ok, [atom()]}
+    def models(_payload, _meta, _state), do: {:ok, [:small, :large]}
+
+    @rpc surface: :control
+    @doc "Return service status."
+    @spec status(map(), map(), term()) :: {:ok, map()}
+    def status(_payload, meta, state), do: {:ok, %{meta: meta, state: state}}
+
+    def hidden(_payload, _meta, _state), do: {:ok, :hidden}
+  end
+
+  defmodule NativeServer do
+    use SafeRPC.Adapter.Server, service: NativeService
+  end
+
   defmodule AdapterRoutes do
     def echo(payload, meta, _state), do: {:ok, {payload, meta}}
     def named(op, payload, meta, _state), do: {:ok, {op, payload, meta}}
@@ -186,6 +206,58 @@ defmodule SafeRPCTest do
     assert nil == SafeRPC.yield(request, 50)
 
     GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
+  test "exposes @rpc functions through use SafeRPC" do
+    socket = socket_path("native")
+    {:ok, server} = NativeServer.start_link(socket: socket, booted?: true)
+
+    assert {:ok, [:small, :large]} = SafeRPC.call(socket, :models)
+
+    assert {:ok, %{meta: %{trace_id: "abc"}, state: [socket: ^socket, booted?: true]}} =
+             SafeRPC.call(socket, :status, %{}, meta: %{trace_id: "abc"})
+
+    assert {:error, :unknown_operation} = SafeRPC.call(socket, :hidden)
+
+    GenServer.stop(server)
+  end
+
+  test "describes @rpc functions with docs and typespecs" do
+    descriptor = NativeService.__safe_rpc_descriptor__()
+
+    assert %SafeRPC.Descriptor{service: :native, module: NativeService, version: "1"} = descriptor
+    assert [:api, :control] = descriptor.surfaces |> Map.keys() |> Enum.sort()
+    assert %{models: models} = descriptor.surfaces.api.ops
+    assert models.name == :models
+    assert models.surface == :api
+    assert models.function == :models
+    assert models.arity == 3
+    assert models.docs == "Return available models."
+    assert models.spec != nil
+    assert %{status: status} = descriptor.surfaces.control.ops
+    assert status.docs == "Return service status."
+  end
+
+  test "describes services over SafeRPC" do
+    socket = socket_path("describe")
+    {:ok, server} = NativeServer.start_link(socket: socket)
+
+    assert {:ok, %SafeRPC.Descriptor{service: :native, surfaces: surfaces}} =
+             SafeRPC.describe(socket)
+
+    assert Map.has_key?(surfaces.api.ops, :models)
+    assert Map.has_key?(surfaces.control.ops, :status)
+
+    GenServer.stop(server)
+  end
+
+  test "returns unsupported describe for adapter services without descriptors" do
+    socket = socket_path("describe-unsupported")
+    {:ok, server} = AdapterEchoServer.start_link(socket: socket)
+
+    assert {:error, :unsupported} = SafeRPC.describe(socket)
+
     GenServer.stop(server)
   end
 
