@@ -22,6 +22,7 @@ defmodule SafeRPC.Service do
       @behaviour SafeRPC.Adapter.Service
       @safe_rpc_service Keyword.fetch!(opts, :service)
       @safe_rpc_version Keyword.get(opts, :version)
+      @safe_rpc_meta Keyword.get(opts, :meta, %{})
 
       Module.register_attribute(__MODULE__, :rpc, persist: false)
       Module.register_attribute(__MODULE__, :safe_rpc_ops, accumulate: true, persist: true)
@@ -81,7 +82,8 @@ defmodule SafeRPC.Service do
           __MODULE__,
           @safe_rpc_service,
           @safe_rpc_version,
-          __safe_rpc_ops__()
+          __safe_rpc_ops__(),
+          @safe_rpc_meta
         )
       end
 
@@ -96,7 +98,7 @@ defmodule SafeRPC.Service do
     end
   end
 
-  def descriptor(module, service, version, ops) do
+  def descriptor(module, service, version, ops, meta \\ %{}) do
     docs = docs_by_function(module)
     specs = specs_by_function(module)
 
@@ -105,14 +107,15 @@ defmodule SafeRPC.Service do
         ops
         |> Enum.map(&op(module, &1, docs, specs))
         |> Map.new(&{&1.name, &1}),
-      meta: %{}
+      meta: meta
     }
 
     %Descriptor{
       service: service,
       module: module,
       version: version,
-      modules: %{module => module_description}
+      modules: %{module => module_description},
+      meta: meta
     }
   end
 

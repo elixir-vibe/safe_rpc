@@ -177,7 +177,7 @@ Use `SafeRPC` directly in an application module when you want a small Erlang-dis
 
 ```elixir
 defmodule MyApp do
-  use SafeRPC, service: :my_app
+  use SafeRPC, service: :my_app, meta: %{kind: :api}
 
   @rpc true
   @doc "Return available models."
@@ -214,7 +214,7 @@ Discover the exposed service descriptor:
 descriptor.modules[MyApp].ops.models.docs
 ```
 
-Descriptors include exposed modules, operation names, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
+Descriptors include exposed modules, operation names, service/module metadata from `use SafeRPC, meta: ...`, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
 
 For HTTP forwarding, expose an operation such as `:http_request` with `@rpc` the same way as any other operation.
 
