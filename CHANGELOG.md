@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.8 - 2026-06-25
+
+- Use integer request identifiers so one-shot replies decode with safe ETF.
+
 ## v0.1.7 - 2026-06-25
 
 - Serialize RPC operation specs as strings so descriptors remain safe ETF across clients.

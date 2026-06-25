@@ -142,7 +142,7 @@ defmodule SafeRPC.Client do
   end
 
   defp put_pending(from, op, timeout, state) do
-    id = make_ref()
+    id = System.unique_integer([:positive])
     timer = Process.send_after(self(), {:request_timeout, id}, timeout)
     pending = %{from: from, op: op, timer: timer}
     {id, %{state | pending: Map.put(state.pending, id, pending)}}

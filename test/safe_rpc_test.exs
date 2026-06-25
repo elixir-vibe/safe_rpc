@@ -275,6 +275,15 @@ defmodule SafeRPCTest do
     GenServer.stop(server)
   end
 
+  test "one-shot requests use safe reply identifiers" do
+    socket = socket_path("safe-id")
+    {:ok, server} = NativeServer.start_link(socket: socket)
+
+    assert {:ok, %SafeRPC.Descriptor{}} = SafeRPC.describe(socket)
+
+    GenServer.stop(server)
+  end
+
   test "returns unsupported describe for adapter services without descriptors" do
     socket = socket_path("describe-unsupported")
     {:ok, server} = AdapterEchoServer.start_link(socket: socket)
