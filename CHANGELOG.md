@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5 - 2026-06-25
+
+- Add `:socket_mode` support for Unix socket listeners.
+
 ## v0.1.4 - 2026-06-25
 
 - Add `child_spec/1` to `use SafeRPC.Server` modules so SafeRPC servers and adapter servers can be supervised directly.

@@ -17,8 +17,15 @@ defmodule SafeRPC.Transport.Unix do
     socket = Keyword.fetch!(opts, :socket)
     File.rm(socket)
     File.mkdir_p!(Path.dirname(socket))
-    :gen_tcp.listen(0, @socket_opts ++ [ifaddr: {:local, socket}])
+
+    with {:ok, listen} <- :gen_tcp.listen(0, @socket_opts ++ [ifaddr: {:local, socket}]),
+         :ok <- chmod_socket(socket, Keyword.get(opts, :socket_mode)) do
+      {:ok, listen}
+    end
   end
+
+  defp chmod_socket(_socket, nil), do: :ok
+  defp chmod_socket(socket, mode) when is_integer(mode), do: File.chmod(socket, mode)
 
   @impl true
   def accept(listen, timeout), do: :gen_tcp.accept(listen, timeout)

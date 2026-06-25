@@ -76,6 +76,16 @@ defmodule SafeRPCTest do
            } = EchoServer.child_spec(socket: socket)
   end
 
+  test "applies configured Unix socket mode" do
+    socket = socket_path("socket-mode")
+    {:ok, pid} = EchoServer.start_link(socket: socket, socket_mode: 0o660)
+
+    assert {:ok, %File.Stat{mode: mode}} = File.stat(socket)
+    assert Bitwise.band(mode, 0o777) == 0o660
+
+    GenServer.stop(pid)
+  end
+
   test "calls and casts over Unix sockets" do
     socket = socket_path("echo")
     {:ok, pid} = EchoServer.start_link(socket: socket)
