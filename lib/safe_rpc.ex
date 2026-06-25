@@ -26,6 +26,7 @@ defmodule SafeRPC do
   defdelegate cast(socket, op, payload \\ %{}, opts \\ []), to: Client
 
   def describe(socket_or_client, opts \\ []) do
+    ensure_application_loaded(:safe_rpc)
     call(socket_or_client, @describe_op, Keyword.get(opts, :filter, %{}), opts)
   end
 
@@ -55,4 +56,12 @@ defmodule SafeRPC do
   def cancel(%SafeRPC.Task{} = request), do: Client.cancel(request)
 
   def shutdown(%SafeRPC.Task{} = request, _timeout \\ 5_000), do: cancel(request)
+
+  defp ensure_application_loaded(app) do
+    case Application.load(app) do
+      :ok -> :ok
+      {:error, {:already_loaded, ^app}} -> :ok
+      _other -> :ok
+    end
+  end
 end

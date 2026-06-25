@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.9 - 2026-06-25
+
+- Load the SafeRPC application metadata before descriptor calls so safe ETF can decode SafeRPC struct atoms.
+
 ## v0.1.8 - 2026-06-25
 
 - Use integer request identifiers so one-shot replies decode with safe ETF.
