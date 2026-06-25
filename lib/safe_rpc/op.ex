@@ -7,7 +7,7 @@ defmodule SafeRPC.Op do
           function: atom(),
           arity: non_neg_integer(),
           docs: String.t() | nil,
-          spec: term(),
+          spec: String.t() | nil,
           meta: map()
         }
 

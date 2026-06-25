@@ -256,7 +256,8 @@ defmodule SafeRPCTest do
     assert models.function == :models
     assert models.arity == 3
     assert models.docs == "Return available models."
-    assert models.spec != nil
+    assert is_binary(models.spec)
+    assert models.spec =~ "models"
     assert status.docs == "Return service status."
   end
 
@@ -269,6 +270,7 @@ defmodule SafeRPCTest do
 
     assert Map.has_key?(modules[NativeService].ops, :models)
     assert Map.has_key?(modules[NativeService].ops, :status)
+    assert is_binary(modules[NativeService].ops.models.spec)
 
     GenServer.stop(server)
   end

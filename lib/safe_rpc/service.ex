@@ -135,7 +135,7 @@ defmodule SafeRPC.Service do
       function: name,
       arity: arity,
       docs: doc_string(doc),
-      spec: spec,
+      spec: spec_string(spec),
       meta: meta
     })
   end
@@ -163,7 +163,7 @@ defmodule SafeRPC.Service do
       function: attrs.function,
       arity: attrs.arity,
       docs: attrs.docs || Map.get(docs, key),
-      spec: attrs.spec || Map.get(specs, key),
+      spec: attrs.spec || spec_string(Map.get(specs, key)),
       meta: attrs.meta
     }
   end
@@ -185,6 +185,9 @@ defmodule SafeRPC.Service do
         %{}
     end
   end
+
+  defp spec_string(nil), do: nil
+  defp spec_string(spec), do: inspect(spec, limit: :infinity, printable_limit: :infinity)
 
   defp doc_string({_line, doc}), do: doc_string(doc)
   defp doc_string(%{"en" => doc}) when is_binary(doc), do: doc

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.7 - 2026-06-25
+
+- Serialize RPC operation specs as strings so descriptors remain safe ETF across clients.
+
 ## v0.1.6 - 2026-06-25
 
 - Fix server connection cleanup after sending replies.
