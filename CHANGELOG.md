@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.4 - 2026-06-25
+
+- Add `child_spec/1` to `use SafeRPC.Server` modules so SafeRPC servers and adapter servers can be supervised directly.
+
 ## v0.1.3
 
 - Treat `:einval` socket close notifications as normal shutdowns during server-side connection teardown.
