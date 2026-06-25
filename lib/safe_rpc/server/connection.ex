@@ -109,7 +109,7 @@ defmodule SafeRPC.Server.Connection do
     end
   end
 
-  defp remove_worker(id, state) when is_reference(id) do
+  defp remove_worker(id, state) when not is_pid(id) do
     case Map.fetch(state.workers, id) do
       {:ok, %{ref: ref}} -> Process.demonitor(ref, [:flush])
       :error -> :ok

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6 - 2026-06-25
+
+- Fix server connection cleanup after sending replies.
+
 ## v0.1.5 - 2026-06-25
 
 - Add `:socket_mode` support for Unix socket listeners.
