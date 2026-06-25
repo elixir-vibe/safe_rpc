@@ -64,6 +64,18 @@ defmodule SafeRPCTest do
     def handle_cast(:inc, amount, state), do: {:noreply, %{state | count: state.count + amount}}
   end
 
+  test "server modules expose a supervisor child spec" do
+    socket = socket_path("child-spec")
+
+    assert %{
+             id: EchoServer,
+             start: {EchoServer, :start_link, [[socket: ^socket]]},
+             type: :worker,
+             restart: :permanent,
+             shutdown: 5_000
+           } = EchoServer.child_spec(socket: socket)
+  end
+
   test "calls and casts over Unix sockets" do
     socket = socket_path("echo")
     {:ok, pid} = EchoServer.start_link(socket: socket)

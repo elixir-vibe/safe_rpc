@@ -14,6 +14,16 @@ defmodule SafeRPC.Server do
         SafeRPC.Server.start_link(__MODULE__, opts)
       end
 
+      def child_spec(opts) do
+        %{
+          id: Keyword.get(opts, :id, __MODULE__),
+          start: {__MODULE__, :start_link, [opts]},
+          type: :worker,
+          restart: :permanent,
+          shutdown: 5_000
+        }
+      end
+
       def handle_cast(_op, _payload, state), do: {:noreply, state}
 
       def handle_request(%{kind: :call, op: op, payload: payload}, state) do
@@ -26,7 +36,7 @@ defmodule SafeRPC.Server do
         end
       end
 
-      defoverridable start_link: 1, handle_cast: 3, handle_request: 2
+      defoverridable start_link: 1, child_spec: 1, handle_cast: 3, handle_request: 2
     end
   end
 
