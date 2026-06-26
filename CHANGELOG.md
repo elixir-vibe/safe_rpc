@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.10 - 2026-06-26
+
+- Add bounded atom vocabulary preparation for safe ETF clients.
+- Add `use SafeRPC, atoms: [...]` declarations and a `SafeRPC.prepare/2` client helper.
+
 ## v0.1.9 - 2026-06-25
 
 - Load the SafeRPC application metadata before descriptor calls so safe ETF can decode SafeRPC struct atoms.

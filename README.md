@@ -24,6 +24,7 @@ Implemented:
 - optional generic authorizer hook
 - request cancellation
 - framework-agnostic adapter behaviours and HTTP envelopes
+- optional bounded atom vocabulary preparation for independent safe ETF clients
 
 ## Example
 
@@ -215,6 +216,31 @@ descriptor.modules[MyApp].ops.models.docs
 ```
 
 Descriptors include exposed modules, operation names, docs from `@doc`, and typespec metadata from `@spec`. SafeRPC does not define a separate schema language; adapters can translate Elixir typespec metadata to other protocols if needed.
+
+Independent clients that decode replies with safe ETF may need service-specific atoms to exist before calling operations that return atom-rich terms. Declare a bounded vocabulary on the service:
+
+```elixir
+defmodule MyApp do
+  use SafeRPC, service: :my_app, atoms: [:small, :large, :ready]
+
+  @rpc true
+  @spec status(map(), map(), term()) :: {:ok, :ready}
+  def status(_payload, _meta, _state), do: {:ok, :ready}
+end
+```
+
+Prepare the client with validation limits before those calls:
+
+```elixir
+:ok =
+  SafeRPC.prepare(socket,
+    max_atoms: 1_000,
+    max_atom_length: 128,
+    allow: [~r/^[a-z][a-z0-9_]*$/]
+  )
+```
+
+`SafeRPC.prepare/2` first asks the service for atom names as strings, validates the count, length, and optional allow policy, then interns accepted atoms. SafeRPC also includes operation module/function atoms and best-effort literal atoms from RPC typespecs, but dynamic/domain atoms should be declared explicitly with `:atoms`.
 
 For HTTP forwarding, expose an operation such as `:http_request` with `@rpc` the same way as any other operation.
 
