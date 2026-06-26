@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.13 - 2026-06-26
+
+- Use integer identifiers for one-shot requests so replies remain safe ETF across independent clients.
+
 ## v0.1.12 - 2026-06-26
 
 - Include guide files in the Hex package.

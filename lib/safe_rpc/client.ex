@@ -202,7 +202,7 @@ defmodule SafeRPC.Client do
   end
 
   defp send_blocking_request(transport, socket, kind, op, payload, cap, meta, timeout) do
-    id = make_ref()
+    id = System.unique_integer([:positive])
     encoded = encode(kind, id, cap, op, payload, meta)
 
     with :ok <- transport.send(socket, encoded, timeout),
