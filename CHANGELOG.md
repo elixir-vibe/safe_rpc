@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.12 - 2026-06-26
+
+- Include guide files in the Hex package.
+- Collect atoms from literal structs in RPC boundary terms.
+
 ## v0.1.11 - 2026-06-26
 
 - Collect literal atoms from RPC boundary specs, bodies, and options for service vocabularies.

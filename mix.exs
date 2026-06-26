@@ -1,7 +1,7 @@
 defmodule SafeRPC.MixProject do
   use Mix.Project
 
-  @version "0.1.11"
+  @version "0.1.12"
   @source_url "https://github.com/elixir-vibe/safe_rpc"
 
   def project do
@@ -44,7 +44,7 @@ defmodule SafeRPC.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib guides .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 

@@ -336,6 +336,12 @@ defmodule SafeRPC.Service do
     Enum.reduce(list, atoms, &collect_term_atoms/2)
   end
 
+  defp collect_term_atoms(%struct{} = term, atoms) do
+    term
+    |> Map.from_struct()
+    |> collect_term_atoms([struct | atoms])
+  end
+
   defp collect_term_atoms(map, atoms) when is_map(map) do
     Enum.reduce(map, atoms, fn {key, value}, atoms ->
       value
