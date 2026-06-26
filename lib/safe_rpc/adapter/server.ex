@@ -15,6 +15,10 @@ defmodule SafeRPC.Adapter.Server do
         {:reply, SafeRPC.Adapter.Server.describe(unquote(service), state), state}
       end
 
+      def handle_call(:safe_rpc_atoms, _payload, state) do
+        {:reply, SafeRPC.Adapter.Server.atoms(unquote(service), state), state}
+      end
+
       def handle_call(op, payload, state) do
         {:reply, unquote(service).call(op, payload, %{}, state), state}
       end
@@ -22,6 +26,10 @@ defmodule SafeRPC.Adapter.Server do
       @impl true
       def handle_request(%{kind: :call, op: :safe_rpc_describe}, state) do
         {:reply, SafeRPC.Adapter.Server.describe(unquote(service), state), state}
+      end
+
+      def handle_request(%{kind: :call, op: :safe_rpc_atoms}, state) do
+        {:reply, SafeRPC.Adapter.Server.atoms(unquote(service), state), state}
       end
 
       def handle_request(%{kind: :call, op: op, payload: payload, meta: meta}, state) do
@@ -40,6 +48,14 @@ defmodule SafeRPC.Adapter.Server do
       {:ok, service.__safe_rpc_describe__(state)}
     else
       {:error, :unsupported}
+    end
+  end
+
+  def atoms(service, _state) do
+    if function_exported?(service, :__safe_rpc_atoms__, 0) do
+      {:ok, service.__safe_rpc_atoms__()}
+    else
+      {:ok, []}
     end
   end
 end

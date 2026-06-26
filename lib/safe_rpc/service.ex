@@ -22,6 +22,7 @@ defmodule SafeRPC.Service do
       @behaviour SafeRPC.Adapter.Service
       @safe_rpc_service Keyword.fetch!(opts, :service)
       @safe_rpc_version Keyword.get(opts, :version)
+      @safe_rpc_declared_atoms SafeRPC.Atoms.names(Keyword.get(opts, :atoms, []))
 
       Module.register_attribute(__MODULE__, :rpc, persist: false)
       Module.register_attribute(__MODULE__, :safe_rpc_ops, accumulate: true, persist: true)
@@ -76,6 +77,10 @@ defmodule SafeRPC.Service do
       def __safe_rpc_ops__, do: unquote(Macro.escape(ops))
 
       @doc false
+      def __safe_rpc_atoms__,
+        do: SafeRPC.Service.atoms(@safe_rpc_declared_atoms, @safe_rpc_service, __safe_rpc_ops__())
+
+      @doc false
       def __safe_rpc_descriptor__ do
         SafeRPC.Service.descriptor(
           __MODULE__,
@@ -94,6 +99,17 @@ defmodule SafeRPC.Service do
       @impl SafeRPC.Adapter.Service
       def __safe_rpc_describe__(_state), do: __safe_rpc_descriptor__()
     end
+  end
+
+  def atoms(declared_atoms, service, ops) do
+    op_atoms = Enum.flat_map(ops, &[&1.module, &1.function])
+
+    spec_atoms =
+      ops
+      |> Enum.flat_map(&Map.get(&1, :atoms, []))
+      |> Enum.filter(&vocabulary_atom?/1)
+
+    SafeRPC.Atoms.names([declared_atoms, service, op_atoms, spec_atoms])
   end
 
   def descriptor(module, service, version, ops) do
@@ -136,6 +152,7 @@ defmodule SafeRPC.Service do
       arity: arity,
       docs: doc_string(doc),
       spec: spec_string(spec),
+      atoms: atoms_from_spec(spec),
       meta: meta
     })
   end
@@ -185,6 +202,28 @@ defmodule SafeRPC.Service do
         %{}
     end
   end
+
+  defp vocabulary_atom?(atom) when is_atom(atom) do
+    name = Atom.to_string(atom)
+    String.match?(name, ~r/^(Elixir\.)?[A-Za-z][A-Za-z0-9_.]*[?!]?$/)
+  end
+
+  defp atoms_from_spec(nil), do: []
+  defp atoms_from_spec(spec), do: collect_atoms(spec, [])
+
+  defp collect_atoms(atom, atoms) when is_atom(atom), do: [atom | atoms]
+
+  defp collect_atoms(tuple, atoms) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> collect_atoms(atoms)
+  end
+
+  defp collect_atoms(list, atoms) when is_list(list) do
+    Enum.reduce(list, atoms, &collect_atoms/2)
+  end
+
+  defp collect_atoms(_other, atoms), do: atoms
 
   defp spec_string(nil), do: nil
   defp spec_string(spec), do: inspect(spec, limit: :infinity, printable_limit: :infinity)

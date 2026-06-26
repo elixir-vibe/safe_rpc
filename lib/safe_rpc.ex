@@ -15,6 +15,7 @@ defmodule SafeRPC do
   @type local_bindings :: %{optional(atom() | String.t()) => local_binding()}
 
   @describe_op :safe_rpc_describe
+  @atoms_op :safe_rpc_atoms
 
   defmacro __using__(opts) do
     quote do
@@ -28,6 +29,16 @@ defmodule SafeRPC do
   def describe(socket_or_client, opts \\ []) do
     ensure_application_loaded(:safe_rpc)
     call(socket_or_client, @describe_op, Keyword.get(opts, :filter, %{}), opts)
+  end
+
+  def atoms(socket_or_client, opts \\ []) do
+    call(socket_or_client, @atoms_op, Keyword.get(opts, :filter, %{}), opts)
+  end
+
+  def prepare(socket_or_client, opts \\ []) do
+    with {:ok, atoms} <- atoms(socket_or_client, opts) do
+      SafeRPC.Atoms.prepare(atoms, opts)
+    end
   end
 
   def async(client, op, payload \\ %{}, opts \\ []) do

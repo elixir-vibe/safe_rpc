@@ -24,7 +24,7 @@ defmodule SafeRPCTest do
   end
 
   defmodule NativeService do
-    use SafeRPC, service: :native, version: "1"
+    use SafeRPC, service: :native, version: "1", atoms: [:small, :large, :ready]
 
     @rpc true
     @doc "Return available models."
@@ -33,7 +33,7 @@ defmodule SafeRPCTest do
 
     @rpc true
     @doc "Return service status."
-    @spec status(map(), map(), term()) :: {:ok, map()}
+    @spec status(map(), map(), term()) :: {:ok, :ready | map()}
     def status(_payload, meta, state), do: {:ok, %{meta: meta, state: state}}
 
     def hidden(_payload, _meta, _state), do: {:ok, :hidden}
@@ -259,6 +259,49 @@ defmodule SafeRPCTest do
     assert is_binary(models.spec)
     assert models.spec =~ "models"
     assert status.docs == "Return service status."
+  end
+
+  test "prepares declared service atoms over SafeRPC" do
+    socket = socket_path("atoms")
+    {:ok, server} = NativeServer.start_link(socket: socket)
+
+    assert {:ok, atoms} = SafeRPC.atoms(socket)
+    assert "Elixir.SafeRPCTest.NativeService" in atoms
+    assert "native" in atoms
+    assert "models" in atoms
+    assert "small" in atoms
+    assert "large" in atoms
+    assert "ready" in atoms
+    refute "::" in atoms
+
+    assert :ok = SafeRPC.prepare(socket, max_atoms: 100, max_atom_length: 128)
+
+    GenServer.stop(server)
+  end
+
+  test "rejects atom preparation when the service declares too many atoms" do
+    socket = socket_path("atoms-too-many")
+    {:ok, server} = NativeServer.start_link(socket: socket)
+
+    assert {:error, {:too_many_atoms, count, 1}} = SafeRPC.prepare(socket, max_atoms: 1)
+    assert count > 1
+
+    GenServer.stop(server)
+  end
+
+  test "rejects atom preparation when names are too long" do
+    assert {:error, {:atom_name_too_long, "too_long", 3}} =
+             SafeRPC.Atoms.prepare(["ok", "too_long"], max_atom_length: 3)
+  end
+
+  test "rejects atom preparation when names are not allowed" do
+    assert {:error, {:atom_not_allowed, "Elixir.Bad"}} =
+             SafeRPC.Atoms.prepare(["ok", "Elixir.Bad"], allow: [~r/^[a-z_]+$/])
+  end
+
+  test "normalizes atom vocabulary names" do
+    assert ["Elixir.SafeRPCTest.NativeService", "ok"] =
+             SafeRPC.Atoms.names([:ok, SafeRPCTest.NativeService, "ok"])
   end
 
   test "describes services over SafeRPC" do
