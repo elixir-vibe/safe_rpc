@@ -273,8 +273,45 @@ defmodule SafeRPCTest do
     assert "large" in atoms
     assert "ready" in atoms
     refute "::" in atoms
+    refute "line" in atoms
+    refute "spec" in atoms
+    refute "map" in atoms
+    refute "term" in atoms
+    refute "atom" in atoms
 
     assert :ok = SafeRPC.prepare(socket, max_atoms: 100, max_atom_length: 128)
+
+    GenServer.stop(server)
+  end
+
+  test "allows atom vocabulary requests through all-op capabilities" do
+    socket = socket_path("atoms-cap-all")
+    cap = SafeRPC.Capability.new(token: "secret", ops: :all)
+    {:ok, server} = NativeServer.start_link(socket: socket, capability: cap)
+
+    assert {:ok, atoms} = SafeRPC.atoms(socket, cap: "secret")
+    assert "native" in atoms
+
+    GenServer.stop(server)
+  end
+
+  test "allows explicitly capability-scoped atom vocabulary requests" do
+    socket = socket_path("atoms-cap-explicit")
+    cap = SafeRPC.Capability.new(token: "secret", ops: [:safe_rpc_atoms])
+    {:ok, server} = NativeServer.start_link(socket: socket, capability: cap)
+
+    assert {:ok, atoms} = SafeRPC.atoms(socket, cap: "secret")
+    assert "native" in atoms
+
+    GenServer.stop(server)
+  end
+
+  test "rejects atom vocabulary requests excluded by capability scope" do
+    socket = socket_path("atoms-cap-reject")
+    cap = SafeRPC.Capability.new(token: "secret", ops: [:safe_rpc_describe])
+    {:ok, server} = NativeServer.start_link(socket: socket, capability: cap)
+
+    assert {:error, :unauthorized} = SafeRPC.atoms(socket, cap: "secret")
 
     GenServer.stop(server)
   end

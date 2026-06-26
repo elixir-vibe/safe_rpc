@@ -209,9 +209,22 @@ defmodule SafeRPC.Service do
   end
 
   defp atoms_from_spec(nil), do: []
+
+  defp atoms_from_spec(specs) when is_list(specs) do
+    Enum.flat_map(specs, fn
+      {:spec, spec, _location} -> collect_atoms(spec, [])
+      spec -> collect_atoms(spec, [])
+    end)
+  end
+
   defp atoms_from_spec(spec), do: collect_atoms(spec, [])
 
   defp collect_atoms(atom, atoms) when is_atom(atom), do: [atom | atoms]
+
+  defp collect_atoms({name, meta, args}, atoms)
+       when is_atom(name) and is_list(meta) and is_list(args) do
+    collect_atoms(args, atoms)
+  end
 
   defp collect_atoms(tuple, atoms) when is_tuple(tuple) do
     tuple
