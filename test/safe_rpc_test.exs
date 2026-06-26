@@ -324,6 +324,7 @@ defmodule SafeRPCTest do
     assert "small" in atoms
     assert "large" in atoms
     assert "ready" in atoms
+    assert "safe_rpc_reply" in atoms
     refute "hidden" in atoms
     refute "::" in atoms
     refute "line" in atoms

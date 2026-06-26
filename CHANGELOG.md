@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.14 - 2026-06-26
+
+- Include protocol reply atoms in service vocabularies exposed for safe ETF preparation.
+
 ## v0.1.13 - 2026-06-26
 
 - Use integer identifiers for one-shot requests so replies remain safe ETF across independent clients.

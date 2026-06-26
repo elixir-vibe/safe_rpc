@@ -115,6 +115,7 @@ defmodule SafeRPC.Service do
   end
 
   def atoms(declared_atoms, service, ops) do
+    protocol_atoms = [:safe_rpc_reply]
     op_atoms = Enum.flat_map(ops, &[&1.module, &1.function])
 
     spec_atoms =
@@ -122,7 +123,7 @@ defmodule SafeRPC.Service do
       |> Enum.flat_map(&Map.get(&1, :atoms, []))
       |> Enum.filter(&vocabulary_atom?/1)
 
-    SafeRPC.Atoms.names([declared_atoms, service, op_atoms, spec_atoms])
+    SafeRPC.Atoms.names([declared_atoms, service, protocol_atoms, op_atoms, spec_atoms])
   end
 
   def descriptor(module, service, version, ops) do
