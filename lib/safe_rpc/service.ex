@@ -22,10 +22,12 @@ defmodule SafeRPC.Service do
       @behaviour SafeRPC.Adapter.Service
       @safe_rpc_service Keyword.fetch!(opts, :service)
       @safe_rpc_version Keyword.get(opts, :version)
-      @safe_rpc_declared_atoms SafeRPC.Atoms.names(Keyword.get(opts, :atoms, []))
 
       Module.register_attribute(__MODULE__, :rpc, persist: false)
       Module.register_attribute(__MODULE__, :safe_rpc_ops, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :safe_rpc_atoms, accumulate: true, persist: true)
+
+      @safe_rpc_atoms Keyword.get(opts, :atoms, [])
 
       @on_definition SafeRPC.Service
       @before_compile SafeRPC.Service
@@ -37,7 +39,7 @@ defmodule SafeRPC.Service do
     end
   end
 
-  def __on_definition__(env, kind, name, args, _guards, _body)
+  def __on_definition__(env, kind, name, args, _guards, body)
       when kind in [:def, :defp] do
     case Module.get_attribute(env.module, :rpc) do
       nil ->
@@ -54,7 +56,8 @@ defmodule SafeRPC.Service do
           length(args),
           rpc_opts,
           Module.get_attribute(env.module, :doc),
-          Module.get_attribute(env.module, :spec)
+          Module.get_attribute(env.module, :spec),
+          body
         )
 
         Module.delete_attribute(env.module, :rpc)
@@ -65,6 +68,11 @@ defmodule SafeRPC.Service do
     ops =
       env.module
       |> Module.get_attribute(:safe_rpc_ops)
+      |> Enum.reverse()
+
+    declared_atoms =
+      env.module
+      |> Module.get_attribute(:safe_rpc_atoms)
       |> Enum.reverse()
 
     call_clauses =
@@ -78,7 +86,12 @@ defmodule SafeRPC.Service do
 
       @doc false
       def __safe_rpc_atoms__,
-        do: SafeRPC.Service.atoms(@safe_rpc_declared_atoms, @safe_rpc_service, __safe_rpc_ops__())
+        do:
+          SafeRPC.Service.atoms(
+            unquote(Macro.escape(declared_atoms)),
+            @safe_rpc_service,
+            __safe_rpc_ops__()
+          )
 
       @doc false
       def __safe_rpc_descriptor__ do
@@ -132,12 +145,12 @@ defmodule SafeRPC.Service do
     }
   end
 
-  defp register_rpc!(module, :defp, name, _arity, _rpc_opts, _doc, _spec) do
+  defp register_rpc!(module, :defp, name, _arity, _rpc_opts, _doc, _spec, _body) do
     raise ArgumentError,
           "private function #{inspect(module)}.#{name}/3 cannot be exposed with @rpc"
   end
 
-  defp register_rpc!(module, :def, name, arity, rpc_opts, doc, spec) do
+  defp register_rpc!(module, :def, name, arity, rpc_opts, doc, spec, body) do
     if arity != 3 do
       raise ArgumentError,
             "@rpc function #{inspect(module)}.#{name}/#{arity} must have arity 3: payload, meta, state"
@@ -152,7 +165,7 @@ defmodule SafeRPC.Service do
       arity: arity,
       docs: doc_string(doc),
       spec: spec_string(spec),
-      atoms: atoms_from_spec(spec),
+      atoms: atoms_from_spec(spec) ++ atoms_from_body(body) ++ collect_term_atoms(opts, []),
       meta: meta
     })
   end
@@ -212,31 +225,125 @@ defmodule SafeRPC.Service do
 
   defp atoms_from_spec(specs) when is_list(specs) do
     Enum.flat_map(specs, fn
-      {:spec, spec, _location} -> collect_atoms(spec, [])
-      spec -> collect_atoms(spec, [])
+      {:spec, spec, _location} -> collect_spec_atoms(spec, [])
+      spec -> collect_spec_atoms(spec, [])
     end)
   end
 
-  defp atoms_from_spec(spec), do: collect_atoms(spec, [])
+  defp atoms_from_spec(spec), do: collect_spec_atoms(spec, [])
 
-  defp collect_atoms(atom, atoms) when is_atom(atom), do: [atom | atoms]
+  defp collect_spec_atoms(atom, atoms) when is_atom(atom), do: [atom | atoms]
 
-  defp collect_atoms({name, meta, args}, atoms)
-       when is_atom(name) and is_list(meta) and is_list(args) do
-    collect_atoms(args, atoms)
+  defp collect_spec_atoms({_form, meta, args}, atoms) when is_list(meta) and is_list(args) do
+    collect_spec_atoms(args, atoms)
   end
 
-  defp collect_atoms(tuple, atoms) when is_tuple(tuple) do
+  defp collect_spec_atoms(tuple, atoms) when is_tuple(tuple) do
     tuple
     |> Tuple.to_list()
-    |> collect_atoms(atoms)
+    |> collect_spec_atoms(atoms)
   end
 
-  defp collect_atoms(list, atoms) when is_list(list) do
-    Enum.reduce(list, atoms, &collect_atoms/2)
+  defp collect_spec_atoms(list, atoms) when is_list(list) do
+    Enum.reduce(list, atoms, &collect_spec_atoms/2)
   end
 
-  defp collect_atoms(_other, atoms), do: atoms
+  defp collect_spec_atoms(_other, atoms), do: atoms
+
+  defp atoms_from_body(nil), do: []
+  defp atoms_from_body(do: body), do: atoms_from_ast(body)
+  defp atoms_from_body(body), do: atoms_from_ast(body)
+
+  defp atoms_from_ast(ast), do: collect_ast_atoms(ast, [])
+
+  defp collect_ast_atoms({:__aliases__, _meta, _parts} = ast, atoms) do
+    collect_literal_or_children(ast, atoms)
+  end
+
+  defp collect_ast_atoms({:%, _meta, _args} = ast, atoms) do
+    collect_literal_or_children(ast, atoms)
+  end
+
+  defp collect_ast_atoms({:%{}, _meta, _args} = ast, atoms) do
+    collect_literal_or_children(ast, atoms)
+  end
+
+  defp collect_ast_atoms({_name, meta, context}, atoms)
+       when is_list(meta) and is_atom(context) do
+    atoms
+  end
+
+  defp collect_ast_atoms({_form, meta, args}, atoms) when is_list(meta) and is_list(args) do
+    collect_ast_atoms(args, atoms)
+  end
+
+  defp collect_ast_atoms(ast, atoms), do: collect_literal_or_children(ast, atoms)
+
+  defp collect_literal_or_children(ast, atoms) do
+    if literal_term_ast?(ast) do
+      ast
+      |> Code.eval_quoted([], __ENV__)
+      |> elem(0)
+      |> collect_term_atoms(atoms)
+    else
+      collect_ast_children(ast, atoms)
+    end
+  end
+
+  defp literal_term_ast?(ast) do
+    Macro.quoted_literal?(ast) and not contains_variable_ast?(ast)
+  end
+
+  defp contains_variable_ast?({_name, meta, context}) when is_list(meta) and is_atom(context),
+    do: true
+
+  defp contains_variable_ast?({_form, meta, args}) when is_list(meta) and is_list(args),
+    do: Enum.any?(args, &contains_variable_ast?/1)
+
+  defp contains_variable_ast?(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> Enum.any?(&contains_variable_ast?/1)
+
+  defp contains_variable_ast?(list) when is_list(list),
+    do: Enum.any?(list, &contains_variable_ast?/1)
+
+  defp contains_variable_ast?(_other), do: false
+
+  defp collect_ast_children({_form, meta, args}, atoms) when is_list(meta) and is_list(args) do
+    collect_ast_atoms(args, atoms)
+  end
+
+  defp collect_ast_children(tuple, atoms) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> collect_ast_atoms(atoms)
+  end
+
+  defp collect_ast_children(list, atoms) when is_list(list) do
+    Enum.reduce(list, atoms, &collect_ast_atoms/2)
+  end
+
+  defp collect_ast_children(_other, atoms), do: atoms
+
+  defp collect_term_atoms(atom, atoms) when is_atom(atom), do: [atom | atoms]
+
+  defp collect_term_atoms(tuple, atoms) when is_tuple(tuple) do
+    tuple
+    |> Tuple.to_list()
+    |> collect_term_atoms(atoms)
+  end
+
+  defp collect_term_atoms(list, atoms) when is_list(list) do
+    Enum.reduce(list, atoms, &collect_term_atoms/2)
+  end
+
+  defp collect_term_atoms(map, atoms) when is_map(map) do
+    Enum.reduce(map, atoms, fn {key, value}, atoms ->
+      value
+      |> collect_term_atoms(collect_term_atoms(key, atoms))
+    end)
+  end
+
+  defp collect_term_atoms(_other, atoms), do: atoms
 
   defp spec_string(nil), do: nil
   defp spec_string(spec), do: inspect(spec, limit: :infinity, printable_limit: :infinity)

@@ -43,6 +43,39 @@ defmodule SafeRPCTest do
     use SafeRPC.Adapter.Server, service: NativeService
   end
 
+  defmodule MetadataDSL do
+    defmacro __using__(_opts) do
+      quote do
+        @before_compile unquote(__MODULE__)
+        use SafeRPC, service: :metadata_dsl, version: "1"
+      end
+    end
+
+    defmacro __before_compile__(_env) do
+      metadata = %{
+        surface: :api_key,
+        table: [columns: [:trace_requests], opts: [format: :money, as: :boolean]],
+        action: {:rotate, [scope: :row]},
+        module: SafeRPCTest.MetadataService
+      }
+
+      quote do
+        def __metadata__, do: unquote(Macro.escape(metadata))
+
+        @rpc true
+        @spec status(map(), map(), term()) :: {:ok, :ready}
+        def status(_payload, _meta, _state) do
+          _boundary_metadata = unquote(Macro.escape(metadata))
+          {:ok, :ready}
+        end
+      end
+    end
+  end
+
+  defmodule MetadataService do
+    use MetadataDSL
+  end
+
   defmodule AdapterRoutes do
     def echo(payload, meta, _state), do: {:ok, {payload, meta}}
     def named(op, payload, meta, _state), do: {:ok, {op, payload, meta}}
@@ -261,6 +294,25 @@ defmodule SafeRPCTest do
     assert status.docs == "Return service status."
   end
 
+  test "collects literal atoms from generated service metadata" do
+    atoms = MetadataService.__safe_rpc_atoms__()
+
+    assert "api_key" in atoms
+    assert "trace_requests" in atoms
+    assert "format" in atoms
+    assert "money" in atoms
+    assert "boolean" in atoms
+    assert "rotate" in atoms
+    assert "row" in atoms
+    assert "ready" in atoms
+    assert "Elixir.SafeRPCTest.MetadataService" in atoms
+
+    refute "def" in atoms
+    refute "__block__" in atoms
+    refute "_payload" in atoms
+    refute "line" in atoms
+  end
+
   test "prepares declared service atoms over SafeRPC" do
     socket = socket_path("atoms")
     {:ok, server} = NativeServer.start_link(socket: socket)
@@ -272,6 +324,7 @@ defmodule SafeRPCTest do
     assert "small" in atoms
     assert "large" in atoms
     assert "ready" in atoms
+    refute "hidden" in atoms
     refute "::" in atoms
     refute "line" in atoms
     refute "spec" in atoms
