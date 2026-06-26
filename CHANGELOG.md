@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.11 - 2026-06-26
+
+- Collect literal atoms from RPC boundary specs, bodies, and options for service vocabularies.
+
 ## v0.1.10 - 2026-06-26
 
 - Add bounded atom vocabulary preparation for safe ETF clients.

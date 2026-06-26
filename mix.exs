@@ -1,7 +1,7 @@
 defmodule SafeRPC.MixProject do
   use Mix.Project
 
-  @version "0.1.10"
+  @version "0.1.11"
   @source_url "https://github.com/elixir-vibe/safe_rpc"
 
   def project do
@@ -53,7 +53,20 @@ defmodule SafeRPC.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"]
+      extras: [
+        "README.md",
+        "guides/service-modules.md",
+        "guides/clients.md",
+        "guides/atom-vocabularies.md",
+        "guides/authorization.md",
+        "guides/protocol.md",
+        "guides/local-bindings.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
+      groups_for_extras: [
+        Guides: ~r/guides\//
+      ]
     ]
   end
 
