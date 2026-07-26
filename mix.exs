@@ -1,14 +1,14 @@
 defmodule SafeRPC.MixProject do
   use Mix.Project
 
-  @version "0.1.15"
+  @version "0.1.16"
   @source_url "https://github.com/elixir-vibe/safe_rpc"
 
   def project do
     [
       app: :safe_rpc,
       version: @version,
-      elixir: "~> 1.20",
+      elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       description: description(),
       source_url: @source_url,

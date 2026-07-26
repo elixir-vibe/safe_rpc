@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+## 0.1.16 - 2026-07-26
+
 ### Added
 
 - Add the proposed SafeRPC v2 protocol RFC covering negotiation, authenticated session identity, bounded concurrency, cancellation, deadlines, reconnect behavior, telemetry, and streaming flow control.
+
+### Compatibility
+
+- Support Elixir 1.19 and later.
 
 ## 0.1.15 - 2026-07-26
 
