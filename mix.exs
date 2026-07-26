@@ -59,6 +59,7 @@ defmodule SafeRPC.MixProject do
         "guides/clients.md",
         "guides/atom-vocabularies.md",
         "guides/authorization.md",
+        "guides/security.md",
         "guides/protocol.md",
         "guides/local-bindings.md",
         "CHANGELOG.md",

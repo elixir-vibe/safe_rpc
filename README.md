@@ -52,6 +52,7 @@ end
 - [Clients](guides/clients.md)
 - [Atom vocabularies and safe ETF](guides/atom-vocabularies.md)
 - [Authorization](guides/authorization.md)
+- [Security model](guides/security.md)
 - [Protocol](guides/protocol.md)
 - [Local bindings](guides/local-bindings.md)
 

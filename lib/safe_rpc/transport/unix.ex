@@ -3,13 +3,15 @@ defmodule SafeRPC.Transport.Unix do
 
   @behaviour SafeRPC.Transport
 
-  @socket_opts [:binary, active: false, packet: 4]
+  alias SafeRPC.Protocol
+
+  @base_socket_opts [:binary, active: false, packet: 4]
 
   @impl true
   def connect(opts) do
     socket = Keyword.fetch!(opts, :socket)
     timeout = Keyword.get(opts, :connect_timeout, 5_000)
-    :gen_tcp.connect({:local, socket}, 0, @socket_opts, timeout)
+    :gen_tcp.connect({:local, socket}, 0, socket_opts(opts), timeout)
   end
 
   @impl true
@@ -18,10 +20,16 @@ defmodule SafeRPC.Transport.Unix do
     File.rm(socket)
     File.mkdir_p!(Path.dirname(socket))
 
-    with {:ok, listen} <- :gen_tcp.listen(0, @socket_opts ++ [ifaddr: {:local, socket}]),
+    with {:ok, listen} <-
+           :gen_tcp.listen(0, socket_opts(opts) ++ [ifaddr: {:local, socket}]),
          :ok <- chmod_socket(socket, Keyword.get(opts, :socket_mode)) do
       {:ok, listen}
     end
+  end
+
+  defp socket_opts(opts) do
+    max_frame_size = Keyword.get(opts, :max_frame_size, Protocol.default_max_frame_size())
+    @base_socket_opts ++ [packet_size: max_frame_size]
   end
 
   defp chmod_socket(_socket, nil), do: :ok

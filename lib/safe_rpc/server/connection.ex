@@ -18,6 +18,8 @@ defmodule SafeRPC.Server.Connection do
       transport: transport,
       socket: socket,
       recv_timeout: Keyword.get(opts, :recv_timeout, 5_000),
+      max_frame_size:
+        Keyword.get(opts, :max_frame_size, SafeRPC.Protocol.default_max_frame_size()),
       receiver: spawn_link(fn -> recv_loop(owner, transport, socket) end),
       workers: %{}
     }
@@ -40,9 +42,12 @@ defmodule SafeRPC.Server.Connection do
 
   def handle_info({:reply, id, reply}, state) do
     state = remove_worker(id, state)
+    encoded = Protocol.encode_reply(id, reply)
 
-    case state.transport.send(state.socket, Protocol.encode_reply(id, reply), state.recv_timeout) do
-      :ok -> {:noreply, state}
+    with :ok <- Protocol.validate_frame_size(encoded, state.max_frame_size),
+         :ok <- state.transport.send(state.socket, encoded, state.recv_timeout) do
+      {:noreply, state}
+    else
       {:error, :closed} -> {:stop, :normal, state}
       {:error, reason} -> {:stop, reason, state}
     end

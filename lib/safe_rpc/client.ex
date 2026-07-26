@@ -77,7 +77,9 @@ defmodule SafeRPC.Client do
   end
 
   def handle_call({:cancel, id}, _from, state) do
-    case state.transport.send(state.socket, Protocol.encode_cancel(id), 5_000) do
+    encoded = Protocol.encode_cancel(id)
+
+    case send_encoded(state.transport, state.socket, encoded, 5_000, max_frame_size(state.opts)) do
       :ok -> {:reply, :ok, state}
       error -> {:reply, error, state}
     end
@@ -162,8 +164,10 @@ defmodule SafeRPC.Client do
     cap = Keyword.get(opts, :cap, state.cap)
     meta = Keyword.get(opts, :meta, %{})
     encoded = encode(kind, id, cap, op, payload, meta)
+    timeout = Keyword.get(opts, :timeout, 5_000)
+    max_size = min(max_frame_size(state.opts), max_frame_size(opts))
 
-    case state.transport.send(state.socket, encoded, Keyword.get(opts, :timeout, 5_000)) do
+    case send_encoded(state.transport, state.socket, encoded, timeout, max_size) do
       :ok -> {:ok, state}
       {:error, reason} -> {:error, reason, state}
     end
@@ -195,22 +199,52 @@ defmodule SafeRPC.Client do
     meta = Keyword.get(opts, :meta, %{})
 
     with {:ok, port} <- transport.connect(Keyword.put(opts, :socket, socket)),
-         result <- send_blocking_request(transport, port, kind, op, payload, cap, meta, timeout),
+         result <-
+           send_blocking_request(
+             transport,
+             port,
+             kind,
+             op,
+             payload,
+             cap,
+             meta,
+             timeout,
+             max_frame_size(opts)
+           ),
          :ok <- transport.close(port) do
       result
     end
   end
 
-  defp send_blocking_request(transport, socket, kind, op, payload, cap, meta, timeout) do
+  defp send_blocking_request(
+         transport,
+         socket,
+         kind,
+         op,
+         payload,
+         cap,
+         meta,
+         timeout,
+         max_frame_size
+       ) do
     id = System.unique_integer([:positive])
     encoded = encode(kind, id, cap, op, payload, meta)
 
-    with :ok <- transport.send(socket, encoded, timeout),
+    with :ok <- send_encoded(transport, socket, encoded, timeout, max_frame_size),
          {:ok, response} <- transport.recv(socket, timeout),
          {:ok, result} <- Protocol.decode_reply(response, id) do
       result
     end
   end
+
+  defp send_encoded(transport, socket, encoded, timeout, max_frame_size) do
+    with :ok <- Protocol.validate_frame_size(encoded, max_frame_size) do
+      transport.send(socket, encoded, timeout)
+    end
+  end
+
+  defp max_frame_size(opts),
+    do: Keyword.get(opts, :max_frame_size, Protocol.default_max_frame_size())
 
   defp encode(:call, id, cap, op, payload, meta),
     do: Protocol.encode_call(id, cap, op, payload, meta)

@@ -30,14 +30,14 @@ Reply:
 {:safe_rpc_reply, 1, id, result}
 ```
 
-Each term is encoded with `:erlang.term_to_binary/1` and decoded with `:erlang.binary_to_term(binary, [:safe])`.
+Each term is encoded with `:erlang.term_to_binary/1`. Decoding uses `Plug.Crypto.non_executable_binary_to_term(binary, [:safe])` so unknown atoms and executable terms are rejected.
 
 ## Fields
 
 - `id` correlates requests and replies.
 - `cap` is an optional capability token checked on the server.
 - `kind` is `:call` or `:cast`.
-- `op` is the application operation. `use SafeRPC` services use `{Module, function}`.
+- `op` is an operation atom or `{Module, function}` pair. `use SafeRPC` services use the module/function form.
 - `payload` is the request term.
 - `meta` is a map of per-request metadata.
 - `result` is normally `{:ok, term}` or `{:error, reason}`, but SafeRPC does not enforce an application result schema.
@@ -57,11 +57,13 @@ SafeRPC reserves two operation atoms:
 
 Both operations go through normal server-side capability and authorizer checks.
 
-## Safe decoding
+## Safe decoding and frame limits
 
-SafeRPC does not use unsafe `binary_to_term/1` for protocol frames. Safe decoding rejects unknown atoms, remote references that would create atoms indirectly, and unsafe external function references.
+SafeRPC does not use unsafe `binary_to_term/1` for protocol frames. Decoding refuses unknown atoms and executable terms such as anonymous functions. Compressed ETF is rejected before decompression.
 
-For atom-rich cross-release replies, use `SafeRPC.prepare/2` before the call. See [Atom vocabularies and safe ETF](atom-vocabularies.md).
+Encoded frames are limited to 16 MiB by default on both clients and servers. Set `:max_frame_size` to a smaller positive byte count when starting a server or client and when making one-shot calls. Oversized outgoing frames return `{:error, {:frame_too_large, size, limit}}`; oversized inbound frames close only that connection.
+
+For atom-rich cross-release replies, use `SafeRPC.prepare/2` before the call. See [Atom vocabularies and safe ETF](atom-vocabularies.md) and the [security model](security.md).
 
 ## Versioning
 

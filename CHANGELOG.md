@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Replace the zero-timeout listener polling loop with a blocking acceptor process.
+- Contain connection exits and handler exceptions so one failed request does not terminate the listener.
+- Enforce configurable frame-size limits on clients and servers.
+
+### Security
+
+- Reject executable ETF terms and compressed ETF before request dispatch.
+- Validate request identifiers and metadata shapes at the protocol boundary.
+- Document SafeRPC's trusted-service threat model and deployment requirements.
+
 ## v0.1.14 - 2026-06-26
 
 - Include protocol reply atoms in service vocabularies exposed for safe ETF preparation.

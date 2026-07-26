@@ -1,6 +1,8 @@
 defmodule SafeRPCTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   defmodule MetadataAuthorizer do
     @behaviour SafeRPC.Authorizer
 
@@ -94,6 +96,8 @@ defmodule SafeRPCTest do
       {:reply, {:ok, :slept}, state}
     end
 
+    def handle_call(:boom, _payload, _state), do: raise("request crash")
+
     def handle_cast(:inc, amount, state), do: {:noreply, %{state | count: state.count + amount}}
   end
 
@@ -128,6 +132,68 @@ defmodule SafeRPCTest do
     assert {:ok, 2} = SafeRPC.call(socket, :count)
 
     GenServer.stop(pid)
+  end
+
+  test "blocks in a dedicated acceptor instead of polling the listener" do
+    socket = socket_path("idle-acceptor")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+    {:reductions, before_reductions} = Process.info(server, :reductions)
+
+    Process.sleep(100)
+
+    {:reductions, after_reductions} = Process.info(server, :reductions)
+    assert after_reductions - before_reductions < 100_000
+
+    GenServer.stop(server)
+  end
+
+  test "contains handler exceptions to the failed request" do
+    socket = socket_path("request-crash")
+    {:ok, server} = EchoServer.start_link(socket: socket)
+
+    log =
+      capture_log(fn ->
+        assert {:error, :internal} = SafeRPC.call(socket, :boom)
+      end)
+
+    assert log =~ "SafeRPC request failed op=:boom"
+    assert Process.alive?(server)
+    assert {:ok, :alive} = SafeRPC.call(socket, :echo, :alive)
+
+    GenServer.stop(server)
+  end
+
+  test "rejects outgoing frames larger than the configured limit" do
+    socket = socket_path("frame-limit")
+    {:ok, server} = EchoServer.start_link(socket: socket, max_frame_size: 1_024)
+
+    assert {:error, {:frame_too_large, size, 1_024}} =
+             SafeRPC.call(socket, :echo, :binary.copy(<<0>>, 2_048), max_frame_size: 1_024)
+
+    assert size > 1_024
+    assert Process.alive?(server)
+
+    GenServer.stop(server)
+  end
+
+  test "contains oversized inbound frames to their connection" do
+    socket = socket_path("inbound-frame-limit")
+    {:ok, server} = EchoServer.start_link(socket: socket, max_frame_size: 512)
+
+    {:ok, raw_client} =
+      :gen_tcp.connect({:local, socket}, 0, [:binary, active: false, packet: 4], 1_000)
+
+    oversized =
+      SafeRPC.Protocol.encode_call(1, nil, :echo, :binary.copy(<<0>>, 1_024))
+
+    assert :ok = :gen_tcp.send(raw_client, oversized)
+    assert {:error, _reason} = :gen_tcp.recv(raw_client, 0, 1_000)
+
+    assert Process.alive?(server)
+    assert {:ok, :alive} = SafeRPC.call(socket, :echo, :alive, max_frame_size: 512)
+
+    :gen_tcp.close(raw_client)
+    GenServer.stop(server)
   end
 
   test "uses a persistent client process" do
@@ -492,6 +558,36 @@ defmodule SafeRPCTest do
   test "rejects invalid terms" do
     assert {:error, {:invalid_term, %ArgumentError{}}} =
              SafeRPC.Protocol.decode_request(<<131, 112>>)
+  end
+
+  test "rejects executable terms in request payloads" do
+    executable = fn _, _ -> {:cont, []} end
+    encoded = SafeRPC.Protocol.encode_call(1, nil, :echo, executable)
+
+    assert {:error, {:invalid_term, %ArgumentError{}}} =
+             SafeRPC.Protocol.decode_request(encoded)
+  end
+
+  test "rejects compressed ETF before decompression" do
+    request = {:safe_rpc, 1, 1, nil, :call, :echo, :binary.copy(<<0>>, 4_096), %{}}
+    encoded = :erlang.term_to_binary(request, compressed: 9)
+
+    assert <<131, 80, _compressed::binary>> = encoded
+
+    assert {:error, :compressed_terms_not_supported} =
+             SafeRPC.Protocol.decode_request(encoded)
+  end
+
+  test "rejects malformed request fields" do
+    malformed_meta = SafeRPC.Protocol.encode_call(1, nil, :echo, :payload, :not_a_map)
+    malformed_op = SafeRPC.Protocol.encode_call(1, nil, {:not, :an, :operation}, :payload)
+    malformed_id = :erlang.term_to_binary({:safe_rpc_cancel, 1, make_ref()})
+
+    assert {:error, {:invalid_request, _term}} =
+             SafeRPC.Protocol.decode_request(malformed_meta)
+
+    assert {:error, {:invalid_request, _term}} = SafeRPC.Protocol.decode_request(malformed_op)
+    assert {:error, {:invalid_request, _term}} = SafeRPC.Protocol.decode_request(malformed_id)
   end
 
   defp socket_path(name) do

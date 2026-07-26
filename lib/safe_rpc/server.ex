@@ -47,17 +47,23 @@ defmodule SafeRPC.Server do
   defmodule Loop do
     use GenServer
 
+    require Logger
+
     alias SafeRPC.Authorizer.AllowAll
     alias SafeRPC.Capability
     alias SafeRPC.Server.Connection
     alias SafeRPC.Transport.Unix
 
     def init({handler, opts}) do
+      Process.flag(:trap_exit, true)
       transport = Keyword.get(opts, :transport, Unix)
       socket = Keyword.fetch!(opts, :socket)
 
       with {:ok, user_state} <- handler.init(opts),
            {:ok, listen} <- transport.listen(opts) do
+        owner = self()
+        acceptor = spawn_link(fn -> accept_loop(owner, transport, listen) end)
+
         state = %{
           handler: handler,
           socket: socket,
@@ -67,35 +73,47 @@ defmodule SafeRPC.Server do
           capability: Keyword.get(opts, :capability),
           authorizer: Keyword.get(opts, :authorizer, AllowAll),
           auth_context: Keyword.get(opts, :auth_context),
-          recv_timeout: Keyword.get(opts, :recv_timeout, 5_000)
+          recv_timeout: Keyword.get(opts, :recv_timeout, 5_000),
+          max_frame_size:
+            Keyword.get(opts, :max_frame_size, SafeRPC.Protocol.default_max_frame_size()),
+          acceptor: acceptor,
+          connections: MapSet.new()
         }
 
-        send(self(), :accept)
         {:ok, state}
       end
     end
 
-    def handle_info(:accept, state) do
-      case state.transport.accept(state.listen, 0) do
-        {:ok, client} ->
-          {:ok, _pid} =
-            Connection.start_link(
-              owner: self(),
-              transport: state.transport,
-              socket: client,
-              recv_timeout: state.recv_timeout
-            )
+    def handle_info({:safe_rpc_accepted, acceptor, client}, %{acceptor: acceptor} = state) do
+      opts = [
+        owner: self(),
+        transport: state.transport,
+        socket: client,
+        recv_timeout: state.recv_timeout,
+        max_frame_size: state.max_frame_size
+      ]
 
-          send(self(), :accept)
-          {:noreply, state}
-
-        {:error, :timeout} ->
-          send(self(), :accept)
-          {:noreply, state}
+      case Connection.start_link(opts) do
+        {:ok, pid} ->
+          {:noreply, %{state | connections: MapSet.put(state.connections, pid)}}
 
         {:error, reason} ->
-          {:stop, reason, state}
+          state.transport.close(client)
+          Logger.error("SafeRPC failed to start a connection: #{inspect(reason)}")
+          {:noreply, state}
       end
+    end
+
+    def handle_info({:safe_rpc_accept_error, acceptor, reason}, %{acceptor: acceptor} = state) do
+      {:stop, {:accept_failed, reason}, state}
+    end
+
+    def handle_info({:EXIT, acceptor, reason}, %{acceptor: acceptor} = state) do
+      {:stop, {:acceptor_exited, reason}, state}
+    end
+
+    def handle_info({:EXIT, pid, _reason}, state) do
+      {:noreply, %{state | connections: MapSet.delete(state.connections, pid)}}
     end
 
     def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
@@ -107,17 +125,43 @@ defmodule SafeRPC.Server do
     end
 
     def terminate(_reason, state) do
+      Process.exit(state.acceptor, :shutdown)
+      Enum.each(state.connections, &Process.exit(&1, :shutdown))
       state.transport.close(state.listen)
       File.rm(state.socket)
       :ok
     end
 
+    defp accept_loop(owner, transport, listen) do
+      case transport.accept(listen, :infinity) do
+        {:ok, client} ->
+          send(owner, {:safe_rpc_accepted, self(), client})
+          accept_loop(owner, transport, listen)
+
+        {:error, :closed} ->
+          :ok
+
+        {:error, reason} ->
+          send(owner, {:safe_rpc_accept_error, self(), reason})
+      end
+    end
+
     defp dispatch(request, state) do
-      with :ok <- authorize_capability(request, state.capability),
-           :ok <- state.authorizer.authorize(request, state.auth_context) do
-        invoke(request, state)
-      else
-        {:error, reason} -> {{:error, reason}, state.user_state}
+      try do
+        with :ok <- authorize_capability(request, state.capability),
+             :ok <- state.authorizer.authorize(request, state.auth_context) do
+          invoke(request, state)
+        else
+          {:error, reason} -> {{:error, reason}, state.user_state}
+        end
+      catch
+        kind, reason ->
+          Logger.error(fn ->
+            banner = Exception.format_banner(kind, reason, __STACKTRACE__)
+            "SafeRPC request failed op=#{inspect(request.op)}: #{banner}"
+          end)
+
+          {{:error, :internal}, state.user_state}
       end
     end
 
