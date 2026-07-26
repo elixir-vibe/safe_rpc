@@ -1,6 +1,6 @@
 # RFC 0001: SafeRPC protocol v2
 
-- **Status:** Proposed
+- **Status:** Proposed; initial design decisions recorded 2026-07-26
 - **Audience:** SafeRPC maintainers, service authors, and transport/adapter authors
 - **Target:** SafeRPC 0.2 development line
 - **Supersedes:** Nothing. Protocol v1 remains documented and supported during migration.
@@ -160,7 +160,9 @@ V2 operations are identified on the wire by two UTF-8 binaries:
 
 The pair is stable API identity. A server registry maps it to a local adapter and function. V2 does not accept a client-selected module/function tuple.
 
-`use SafeRPC` may continue to derive operation names from Elixir function names, but generated descriptors must expose the binary contract IDs and allow explicit overrides. Renaming a module must not change the wire contract. Renaming an operation is a breaking contract change unless an alias remains registered.
+A v2 service must declare its binary service ID explicitly. IDs are 1 to 128 bytes and use lowercase ASCII segments matching `[a-z][a-z0-9_.-]*`. This makes ownership and versioning visible in source rather than coupling the contract to a module name. Existing atom service names remain valid on the v1 path only.
+
+An operation ID defaults to the exposed Elixir function name converted to a binary and may be overridden with `@rpc name: "..."`. It has the same 128-byte bound and may use a final `?` or `!`. Renaming a module does not change the wire contract. Renaming a function is breaking unless the previous operation ID is retained explicitly or registered as an alias.
 
 A service version belongs in the service ID or an explicit descriptor version. Payload evolution follows application policy; SafeRPC does not infer compatibility from Elixir typespecs.
 
@@ -183,7 +185,11 @@ The exact principal shape is application-defined. SafeRPC must preserve the dist
 
 ### Unix sockets
 
-The Unix transport should derive peer credentials from the accepted socket when the operating system and OTP socket API support them. Filesystem ownership and mode remain the first connection boundary. Deployments without peer-credential support may authenticate a connection token in `:hello`.
+Filesystem ownership and mode remain the first connection boundary. The transport exposes an optional `peer_identity/1` callback whose result is server-owned context, never client metadata.
+
+On Linux, the reference Unix transport reads `SO_PEERCRED` from the accepted socket and records the kernel-supplied PID, UID, and GID. Erlang's [`:socket`](https://www.erlang.org/docs/29/apps/kernel/socket) API exposes `peercred` only when the OTP build reports that option as supported. The supported production OTP 29 build does not, while the existing `:gen_tcp` socket can read Linux `struct ucred` through a raw `getsockopt`. The implementation must therefore be explicitly Linux-specific, check the operating system and returned structure size, and fail closed when `peer_identity: :required` cannot be satisfied.
+
+The portable fallback is a connection token in `:hello`, protected by Unix socket permissions. There is no silent fallback when configuration requires kernel peer identity. `:optional` mode may expose `%{mechanism: :unix_socket}` without UID/GID and leave authentication to the token hook.
 
 Capability tokens presented during the handshake are bound to the resulting session and compared in constant time. They are not copied into every request or telemetry event. A service may still require a narrower per-call authorization value, but that value is application data and must be verified by the authorizer.
 
@@ -338,6 +344,8 @@ A sender may transmit data only when it has byte credit for that direction:
 
 Credit counts the encoded ETF frame bytes, not the decoded object size. Sending data beyond available credit is a protocol violation. Each window update adds credit to the remaining balance and must itself be rate-limited.
 
+The receiver replenishes credit only when application code consumes data, not when the transport decodes or enqueues it. This makes the negotiated window a real bound when an application stalls. Elixir streaming APIs may grant credit in bounded batches as `Enumerable` demand advances; the runtime may buffer no more than the granted window plus one frame currently being decoded.
+
 Either side half-closes one direction:
 
 ```elixir
@@ -418,6 +426,8 @@ One connection never mixes versions. V1 retains its existing tuple shapes and se
 A v2 client does not silently retry with v1 after handshake rejection or connection close. Downgrade requires explicit configuration such as `protocols: [2, 1]`, and security-sensitive deployments should use `protocols: [2]` after migration.
 
 The v1 and v2 decoders share frame, ETF, executable-term, and compression defenses.
+
+Every 0.2.x server release remains dual-stack. Early 0.2 clients use v1 by default with explicit v2 opt-in; v2 becomes the default only after Gatehouse, Incant, and llm_proxy have completed production dogfooding. V1 removal may occur no earlier than 0.3.0, 90 days after the first stable v2 release, and after at least two published 0.2 releases with v2 enabled. Removal requires a separately announced breaking release.
 
 ## Compatibility rules
 
@@ -506,22 +516,24 @@ Gatehouse is the preferred first architectural showcase because its control oper
 
 Gatehouse's HTTP forwarding path is a different workload. It must preserve request and response streaming, disconnect cancellation, headers/trailers, and backpressure. A buffered SafeRPC forwarder is not parity and should not be presented as the final data-plane design.
 
-## Open questions
+## Recorded decisions
 
-These questions must be resolved with prototypes before v2 is marked Accepted:
+The initial review resolves the five design questions as follows:
 
-1. Which OTP socket API gives portable Unix peer credentials on supported Linux versions, and what is the explicit fallback?
-2. Should binary service IDs default to an application-qualified module derivation or require an explicit declaration?
-3. Should byte-window updates acknowledge bytes accepted by the client runtime or bytes consumed by application code?
-4. Which core modules can move to a dependency-free package layer so Plug remains adapter-only?
-5. What v1 support window is realistic after all first-party consumers use v2?
+1. **Unix identity:** expose transport peer identity, implement Linux `SO_PEERCRED` with strict platform/shape checks, and use handshake tokens as the portable fallback. Required peer identity fails closed.
+2. **Contract names:** require an explicit binary service ID; derive the operation ID from the function name unless `@rpc name:` overrides it. Module names never appear in v2 requests.
+3. **Stream credit:** replenish bytes when application code consumes chunks. Transport receipt alone does not grant more credit.
+4. **Dependency boundary:** the v2 core targets direct dependencies on `plug_crypto` for non-executable ETF decoding and `telemetry` for events. `SafeRPC.Adapter.Plug` and its HTTP envelope modules move to a separate `safe_rpc_plug` package before 0.2.0. SafeRPC must not copy Plug.Crypto's security-sensitive traversal without an independently reviewed replacement.
+5. **V1 window:** all 0.2.x servers are dual-stack. V2 becomes the client default only after first-party production dogfooding, and v1 cannot be removed before the separately announced 0.3.0 conditions described above.
+
+These are protocol decisions, not claims that the current v1 implementation already provides them. A prototype may return a decision to Proposed if platform or interoperability evidence disproves an assumption; the RFC must record that change explicitly.
 
 ## Acceptance criteria
 
 This RFC may move from Proposed to Accepted when:
 
-- the open questions have recorded decisions;
-- a prototype proves bounded concurrent unary calls and real cancellation;
-- Unix peer identity behavior is tested on the supported deployment platform;
+- prototypes validate the recorded peer-identity, naming, flow-control, and package-boundary decisions;
+- a prototype proves bounded concurrent unary calls and effective cooperative cancellation;
+- Unix peer identity behavior is covered on the supported deployment platform;
 - the independent-VM conformance harness runs in CI;
-- Gatehouse, Incant, and llm_proxy maintainers agree on the binary operation identity and migration path.
+- Gatehouse, Incant, and llm_proxy maintainers confirm the migration path.
