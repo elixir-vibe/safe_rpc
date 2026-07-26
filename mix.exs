@@ -61,6 +61,7 @@ defmodule SafeRPC.MixProject do
         "guides/authorization.md",
         "guides/security.md",
         "guides/protocol.md",
+        "guides/rfc-0001-v2-protocol.md",
         "guides/local-bindings.md",
         "CHANGELOG.md",
         "LICENSE"

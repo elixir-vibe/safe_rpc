@@ -68,3 +68,5 @@ For atom-rich cross-release replies, use `SafeRPC.prepare/2` before the call. Se
 ## Versioning
 
 The protocol term version is currently `1`. Unknown or malformed request/reply terms are rejected by the protocol decoder.
+
+The proposed negotiated protocol, concurrency model, deadlines, authenticated session context, reconnect behavior, and streaming flow control are specified in [RFC 0001: SafeRPC protocol v2](rfc-0001-v2-protocol.md). The RFC is not implemented by the v1 runtime.

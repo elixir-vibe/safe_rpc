@@ -54,6 +54,7 @@ end
 - [Authorization](guides/authorization.md)
 - [Security model](guides/security.md)
 - [Protocol](guides/protocol.md)
+- [RFC 0001: SafeRPC protocol v2](guides/rfc-0001-v2-protocol.md)
 - [Local bindings](guides/local-bindings.md)
 
 ## License
