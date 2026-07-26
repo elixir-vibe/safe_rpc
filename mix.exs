@@ -1,7 +1,7 @@
 defmodule SafeRPC.MixProject do
   use Mix.Project
 
-  @version "0.1.14"
+  @version "0.1.15"
   @source_url "https://github.com/elixir-vibe/safe_rpc"
 
   def project do
@@ -34,7 +34,7 @@ defmodule SafeRPC.MixProject do
 
   defp deps do
     [
-      {:plug, "~> 1.18"},
+      {:plug, "~> 1.20.3"},
       {:benchee, "~> 1.3", only: :dev, runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]

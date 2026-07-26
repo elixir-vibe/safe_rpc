@@ -2,17 +2,23 @@
 
 ## Unreleased
 
+## 0.1.15 - 2026-07-26
+
 ### Fixed
 
-- Replace the zero-timeout listener polling loop with a blocking acceptor process.
+- Eliminate continuous CPU consumption from idle listeners by blocking in a dedicated acceptor.
 - Contain connection exits and handler exceptions so one failed request does not terminate the listener.
 - Enforce configurable frame-size limits on clients and servers.
 
 ### Security
 
 - Reject executable ETF terms and compressed ETF before request dispatch.
-- Validate request identifiers and metadata shapes at the protocol boundary.
+- Validate request identifiers, operation names, and metadata shapes at the protocol boundary.
 - Document SafeRPC's trusted-service threat model and deployment requirements.
+
+### Compatibility
+
+- Require Plug 1.20.3 or later to avoid known request-parsing and cookie-encoding vulnerabilities in older releases.
 
 ## v0.1.14 - 2026-06-26
 
