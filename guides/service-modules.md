@@ -49,6 +49,31 @@ end
 def init(opts), do: {:ok, Keyword.fetch!(opts, :repo)}
 ```
 
+## Execution modes
+
+Servers preserve stateful, serialized dispatch by default. This mode applies each state returned by `handle_request/2` before dispatching the next operation:
+
+```elixir
+MyApp.AdminRPCServer.start_link(socket: socket, execution: :serial)
+```
+
+Services whose startup state is immutable may opt into concurrent dispatch:
+
+```elixir
+MyApp.AdminRPCServer.start_link(
+  socket: socket,
+  execution: :concurrent,
+  max_in_flight: 256,
+  max_in_flight_per_connection: 16
+)
+```
+
+Concurrent handlers run under a request `Task.Supervisor`. They must return the exact startup state; replacing it returns `{:error, :stateful_handler_requires_serial_execution}`. Keep mutable domain state in ordinary supervised processes, repositories, or registries instead of hidden listener state.
+
+When either bound is full, new work receives `{:error, :resource_exhausted}` without terminating the connection. The receive loop hands off one frame at a time so socket traffic cannot become an unbounded connection mailbox.
+
+SafeRPC emits `[:safe_rpc, :connection, :start | :stop]` and `[:safe_rpc, :request, :start | :stop | :exception]` telemetry events. Metadata includes operation and execution mode but never request payloads or capability tokens.
+
 ## Compile-time metadata
 
 At compile time SafeRPC records:

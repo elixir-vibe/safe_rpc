@@ -35,6 +35,7 @@ defmodule SafeRPC.MixProject do
   defp deps do
     [
       {:plug, "~> 1.20.3"},
+      {:telemetry, "~> 1.3"},
       {:benchee, "~> 1.3", only: :dev, runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]

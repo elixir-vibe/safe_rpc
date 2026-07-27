@@ -1,0 +1,14 @@
+[socket, ready_file] = System.argv()
+
+defmodule SafeRPC.CrossVMFixtureServer do
+  use SafeRPC.Server
+
+  def init(_opts), do: {:ok, %{}}
+  def handle_call(:echo, payload, state), do: {:reply, {:ok, payload}, state}
+end
+
+{:ok, _server} =
+  SafeRPC.CrossVMFixtureServer.start_link(socket: socket, execution: :concurrent)
+
+File.write!(ready_file, "ready")
+Process.sleep(:infinity)

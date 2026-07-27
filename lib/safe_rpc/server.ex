@@ -41,7 +41,29 @@ defmodule SafeRPC.Server do
   end
 
   def start_link(handler, opts) do
-    GenServer.start_link(__MODULE__.Loop, {handler, opts}, name: Keyword.get(opts, :name))
+    with :ok <- validate_options(opts) do
+      GenServer.start_link(__MODULE__.Loop, {handler, opts}, name: Keyword.get(opts, :name))
+    end
+  end
+
+  defp validate_options(opts) do
+    execution = Keyword.get(opts, :execution, :serial)
+    global_limit = Keyword.get(opts, :max_in_flight, 1_024)
+    connection_limit = Keyword.get(opts, :max_in_flight_per_connection, 64)
+
+    cond do
+      execution not in [:serial, :concurrent] ->
+        {:error, {:invalid_option, :execution, execution}}
+
+      not (is_integer(global_limit) and global_limit > 0) ->
+        {:error, {:invalid_option, :max_in_flight, global_limit}}
+
+      not (is_integer(connection_limit) and connection_limit > 0) ->
+        {:error, {:invalid_option, :max_in_flight_per_connection, connection_limit}}
+
+      true ->
+        :ok
+    end
   end
 
   defmodule Loop do
@@ -50,8 +72,7 @@ defmodule SafeRPC.Server do
     require Logger
 
     alias SafeRPC.Authorizer.AllowAll
-    alias SafeRPC.Capability
-    alias SafeRPC.Server.Connection
+    alias SafeRPC.Server.{Connection, Dispatcher}
     alias SafeRPC.Transport.Unix
 
     def init({handler, opts}) do
@@ -60,19 +81,30 @@ defmodule SafeRPC.Server do
       socket = Keyword.fetch!(opts, :socket)
 
       with {:ok, user_state} <- handler.init(opts),
-           {:ok, listen} <- transport.listen(opts) do
+           {:ok, listen} <- transport.listen(opts),
+           {:ok, request_supervisor} <- Task.Supervisor.start_link() do
         owner = self()
         acceptor = spawn_link(fn -> accept_loop(owner, transport, listen) end)
 
-        state = %{
+        dispatch = %{
           handler: handler,
-          socket: socket,
-          listen: listen,
-          transport: transport,
           user_state: user_state,
           capability: Keyword.get(opts, :capability),
           authorizer: Keyword.get(opts, :authorizer, AllowAll),
           auth_context: Keyword.get(opts, :auth_context),
+          execution: Keyword.get(opts, :execution, :serial)
+        }
+
+        state = %{
+          socket: socket,
+          listen: listen,
+          transport: transport,
+          dispatch: dispatch,
+          execution: Keyword.get(opts, :execution, :serial),
+          request_supervisor: request_supervisor,
+          in_flight: :atomics.new(1, signed: false),
+          max_in_flight: Keyword.get(opts, :max_in_flight, 1_024),
+          max_in_flight_per_connection: Keyword.get(opts, :max_in_flight_per_connection, 64),
           recv_timeout: Keyword.get(opts, :recv_timeout, 5_000),
           max_frame_size:
             Keyword.get(opts, :max_frame_size, SafeRPC.Protocol.default_max_frame_size()),
@@ -90,7 +122,13 @@ defmodule SafeRPC.Server do
         transport: state.transport,
         socket: client,
         recv_timeout: state.recv_timeout,
-        max_frame_size: state.max_frame_size
+        max_frame_size: state.max_frame_size,
+        execution: state.execution,
+        dispatch: state.dispatch,
+        request_supervisor: state.request_supervisor,
+        in_flight: state.in_flight,
+        max_in_flight: state.max_in_flight,
+        max_in_flight_per_connection: state.max_in_flight_per_connection
       ]
 
       case Connection.start_link(opts) do
@@ -112,6 +150,10 @@ defmodule SafeRPC.Server do
       {:stop, {:acceptor_exited, reason}, state}
     end
 
+    def handle_info({:EXIT, supervisor, reason}, %{request_supervisor: supervisor} = state) do
+      {:stop, {:request_supervisor_exited, reason}, state}
+    end
+
     def handle_info({:EXIT, pid, _reason}, state) do
       {:noreply, %{state | connections: MapSet.delete(state.connections, pid)}}
     end
@@ -120,12 +162,14 @@ defmodule SafeRPC.Server do
     def handle_info({_ref, {_status, _headers, _body}}, state), do: {:noreply, state}
 
     def handle_call({:dispatch, request}, _from, state) do
-      {reply, user_state} = dispatch(request, state)
-      {:reply, reply, %{state | user_state: user_state}}
+      {reply, user_state} = Dispatcher.dispatch(request, state.dispatch)
+      dispatch = %{state.dispatch | user_state: user_state}
+      {:reply, reply, %{state | dispatch: dispatch}}
     end
 
     def terminate(_reason, state) do
       Process.exit(state.acceptor, :shutdown)
+      Process.exit(state.request_supervisor, :shutdown)
       Enum.each(state.connections, &Process.exit(&1, :shutdown))
       state.transport.close(state.listen)
       File.rm(state.socket)
@@ -143,41 +187,6 @@ defmodule SafeRPC.Server do
 
         {:error, reason} ->
           send(owner, {:safe_rpc_accept_error, self(), reason})
-      end
-    end
-
-    defp dispatch(request, state) do
-      try do
-        with :ok <- authorize_capability(request, state.capability),
-             :ok <- state.authorizer.authorize(request, state.auth_context) do
-          invoke(request, state)
-        else
-          {:error, reason} -> {{:error, reason}, state.user_state}
-        end
-      catch
-        kind, reason ->
-          Logger.error(fn ->
-            banner = Exception.format_banner(kind, reason, __STACKTRACE__)
-            "SafeRPC request failed op=#{inspect(request.op)}: #{banner}"
-          end)
-
-          {{:error, :internal}, state.user_state}
-      end
-    end
-
-    defp authorize_capability(_request, nil), do: :ok
-
-    defp authorize_capability(request, capability) do
-      if Capability.allowed?(capability, request.cap, request.op) do
-        :ok
-      else
-        {:error, :unauthorized}
-      end
-    end
-
-    defp invoke(request, state) do
-      case state.handler.handle_request(request, state.user_state) do
-        {:reply, reply, user_state} -> {reply, user_state}
       end
     end
   end
