@@ -56,6 +56,7 @@ end
 - [Protocol](guides/protocol.md)
 - [RFC 0001: SafeRPC protocol v2](guides/rfc-0001-v2-protocol.md)
 - [Local bindings](guides/local-bindings.md)
+- [Benchmarks and stress testing](guides/benchmarks.md)
 
 ## License
 

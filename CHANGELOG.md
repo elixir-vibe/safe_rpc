@@ -9,8 +9,8 @@
 
 ### Changed
 
-- Apply receive-side backpressure by handing one socket frame at a time to each connection process.
-- Run request workers under a dedicated `Task.Supervisor` while preserving serialized stateful dispatch by default.
+- Apply receive-side backpressure with a bounded per-connection receive window.
+- Run concurrent request workers under a dedicated `Task.Supervisor` while preserving serialized stateful dispatch by default.
 
 ## 0.1.16 - 2026-07-26
 

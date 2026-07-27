@@ -13,6 +13,9 @@ defmodule SafeRPC.Server.Connection do
     transport = Keyword.fetch!(opts, :transport)
     socket = Keyword.fetch!(opts, :socket)
     owner = self()
+    execution = Keyword.fetch!(opts, :execution)
+    connection_limit = Keyword.fetch!(opts, :max_in_flight_per_connection)
+    receive_window = if execution == :serial, do: connection_limit, else: 1
 
     state = %{
       owner: Keyword.fetch!(opts, :owner),
@@ -21,14 +24,14 @@ defmodule SafeRPC.Server.Connection do
       recv_timeout: Keyword.get(opts, :recv_timeout, 5_000),
       max_frame_size:
         Keyword.get(opts, :max_frame_size, SafeRPC.Protocol.default_max_frame_size()),
-      execution: Keyword.fetch!(opts, :execution),
+      execution: execution,
       dispatch: Keyword.fetch!(opts, :dispatch),
       request_supervisor: Keyword.fetch!(opts, :request_supervisor),
       in_flight: Keyword.fetch!(opts, :in_flight),
       max_in_flight: Keyword.fetch!(opts, :max_in_flight),
-      max_in_flight_per_connection: Keyword.fetch!(opts, :max_in_flight_per_connection),
+      max_in_flight_per_connection: connection_limit,
       started_at: System.monotonic_time(),
-      receiver: spawn_link(fn -> recv_loop(owner, transport, socket) end),
+      receiver: spawn_link(fn -> recv_loop(owner, transport, socket, receive_window) end),
       workers: %{}
     }
 
@@ -102,14 +105,17 @@ defmodule SafeRPC.Server.Connection do
     :ok
   end
 
-  defp recv_loop(owner, transport, socket) do
+  defp recv_loop(owner, transport, socket, 0) do
+    receive do
+      {:safe_rpc_receive_next, ^owner} -> recv_loop(owner, transport, socket, 1)
+    end
+  end
+
+  defp recv_loop(owner, transport, socket, credits) do
     case transport.recv(socket, :infinity) do
       {:ok, payload} ->
         send(owner, {:safe_rpc_payload, payload})
-
-        receive do
-          {:safe_rpc_receive_next, ^owner} -> recv_loop(owner, transport, socket)
-        end
+        recv_loop(owner, transport, socket, credits - 1)
 
       {:error, reason} ->
         send(owner, {:safe_rpc_closed, normalize_close_reason(reason)})
@@ -135,7 +141,7 @@ defmodule SafeRPC.Server.Connection do
         if Map.has_key?(state.workers, request.id) do
           {:stop, :duplicate_request_id, state}
         else
-          {:ok, start_worker(request, state)}
+          {:ok, start_request(request, state)}
         end
 
       {:error, reason} ->
@@ -143,7 +149,13 @@ defmodule SafeRPC.Server.Connection do
     end
   end
 
-  defp start_worker(request, state) do
+  defp start_request(request, %{execution: :serial, owner: owner} = state) do
+    reply = GenServer.call(owner, {:dispatch, request}, :infinity)
+    send(self(), {:reply, request.id, reply})
+    state
+  end
+
+  defp start_request(request, %{execution: :concurrent} = state) do
     if map_size(state.workers) >= state.max_in_flight_per_connection or
          not acquire_slot(state.in_flight, state.max_in_flight) do
       send(self(), {:reply, request.id, {:error, :resource_exhausted}})
@@ -165,10 +177,6 @@ defmodule SafeRPC.Server.Connection do
           state
       end
     end
-  end
-
-  defp dispatch(request, %{execution: :serial, owner: owner}) do
-    GenServer.call(owner, {:dispatch, request}, :infinity)
   end
 
   defp dispatch(request, %{execution: :concurrent, dispatch: config}) do

@@ -47,18 +47,55 @@ defmodule SafeRPC.StressTest do
     GenServer.stop(server)
   end
 
-  test "survives a cancellation storm" do
+  test "survives a concurrent cancellation storm and recovers worker slots" do
     socket = socket_path("cancel")
-    {:ok, server} = EchoServer.start_link(socket: socket)
+
+    {:ok, server} =
+      EchoServer.start_link(
+        socket: socket,
+        execution: :concurrent,
+        max_in_flight: 64,
+        max_in_flight_per_connection: 64
+      )
+
     {:ok, client} = SafeRPC.Client.start_link(socket: socket)
 
     requests =
-      for i <- 1..50, do: SafeRPC.async(client, :sleep, %{id: i, ms: 10}, timeout: 5_000)
+      for i <- 1..50, do: SafeRPC.async(client, :sleep, %{id: i, ms: 100}, timeout: 5_000)
 
     requests |> Enum.take(25) |> Enum.each(&SafeRPC.cancel/1)
 
-    Process.sleep(100)
+    Process.sleep(150)
     assert SafeRPC.call(client, :echo, :alive, timeout: 5_000) == {:ok, :alive}
+
+    GenServer.stop(client)
+    GenServer.stop(server)
+  end
+
+  test "bounds the serialized connection mailbox under a request flood" do
+    socket = socket_path("mailbox")
+    receive_window = 64
+
+    {:ok, server} =
+      EchoServer.start_link(
+        socket: socket,
+        max_in_flight_per_connection: receive_window
+      )
+
+    {:ok, client} = SafeRPC.Client.start_link(socket: socket)
+    connection = await_connection(server)
+
+    requests =
+      for i <- 1..200,
+          do: SafeRPC.async(client, :sleep, %{id: i, ms: 1}, timeout: 15_000)
+
+    {:messages, messages} = Process.info(connection, :messages)
+    {:memory, connection_memory} = Process.info(connection, :memory)
+
+    queued_payloads = Enum.count(messages, &match?({:safe_rpc_payload, _payload}, &1))
+    assert queued_payloads <= receive_window
+    assert connection_memory < 10 * 1024 * 1024
+    assert Enum.map(requests, &SafeRPC.await(&1, 30_000)) == Enum.map(1..200, &{:ok, &1})
 
     GenServer.stop(client)
     GenServer.stop(server)
@@ -83,6 +120,21 @@ defmodule SafeRPC.StressTest do
 
     GenServer.stop(pool)
     GenServer.stop(server)
+  end
+
+  defp await_connection(server, attempts \\ 100)
+
+  defp await_connection(_server, 0), do: flunk("server did not accept the benchmark client")
+
+  defp await_connection(server, attempts) do
+    case :sys.get_state(server).connections |> MapSet.to_list() do
+      [connection | _rest] ->
+        connection
+
+      [] ->
+        Process.sleep(5)
+        await_connection(server, attempts - 1)
+    end
   end
 
   defp socket_path(name) do
